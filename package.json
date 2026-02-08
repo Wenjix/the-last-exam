@@ -2,6 +2,7 @@
   "name": "the-last-exam",
   "private": true,
   "version": "0.0.1",
+  "packageManager": "pnpm@10.8.0",
   "description": "The Last Exam - AI coding competition game",
   "scripts": {
     "build": "turbo build",

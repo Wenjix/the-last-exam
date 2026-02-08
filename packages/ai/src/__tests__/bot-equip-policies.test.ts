@@ -60,8 +60,8 @@ describe('generateBotBudgetBid determinism', () => {
 
   it('different seeds produce different bids', () => {
     const ctx = makeBidContext();
-    const a = generateBotBudgetBid('aggressive', ctx, 'seed-alpha');
-    const b = generateBotBudgetBid('aggressive', ctx, 'seed-beta');
+    generateBotBudgetBid('aggressive', ctx, 'seed-alpha');
+    generateBotBudgetBid('aggressive', ctx, 'seed-beta');
     // With different seeds, bids should differ (or at least not always match)
     // We test multiple personalities to increase chance of observing difference
     const allSame = ['aggressive', 'conservative', 'chaotic'].every((p) => {

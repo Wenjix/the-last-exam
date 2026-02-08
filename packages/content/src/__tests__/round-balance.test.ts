@@ -14,7 +14,6 @@ import {
   getRoundAssignments,
   getDefaultDataCards,
 } from '../index.js';
-import type { RoundAssignment } from '../index.js';
 import { calculateScore, calculateStandings } from '@tle/game-core';
 import type { HarnessResult, RoundScore } from '@tle/game-core';
 import seedrandom from 'seedrandom';
@@ -163,7 +162,6 @@ describe('Round Balance - Determinism', () => {
 
     // Not all orderings should be identical (data cards are shuffled by seed)
     // Note: challenges are NOT shuffled (fixed difficulty order), but data cards are
-    const unique = new Set(orderings);
     // With fixed challenge order, data card order might also be fixed if mapped 1:1
     // Just verify structural validity
     expect(orderings.length).toBe(5);

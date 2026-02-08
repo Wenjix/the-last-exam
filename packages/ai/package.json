@@ -1,0 +1,17 @@
+{
+  "name": "@tle/ai",
+  "version": "0.0.1",
+  "description": "Bot policies, LLM integrations, and model provider abstractions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests yet\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tle/contracts": "workspace:*",
+    "@tle/game-core": "workspace:*"
+  }
+}

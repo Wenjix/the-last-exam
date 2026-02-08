@@ -1,0 +1,13 @@
+{
+  "name": "@tle/testkit",
+  "version": "0.0.1",
+  "description": "Shared test utilities, fixtures, and helpers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests yet\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

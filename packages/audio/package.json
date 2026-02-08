@@ -1,0 +1,16 @@
+{
+  "name": "@tle/audio",
+  "version": "0.0.1",
+  "description": "Commentary generation and audio pipeline (Gemini TTS)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests yet\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tle/contracts": "workspace:*"
+  }
+}

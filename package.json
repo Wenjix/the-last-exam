@@ -1,0 +1,18 @@
+{
+  "name": "the-last-exam",
+  "private": true,
+  "version": "0.0.1",
+  "description": "The Last Exam - AI coding competition game",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "turbo format",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

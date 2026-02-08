@@ -1,0 +1,64 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/runner:
+    dependencies:
+      '@tle/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
+  apps/server:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@tle/game-core':
+        specifier: workspace:*
+        version: link:../../packages/game-core
+
+  apps/web:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
+  packages/ai:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@tle/game-core':
+        specifier: workspace:*
+        version: link:../game-core
+
+  packages/audio:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/content:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/contracts: {}
+
+  packages/game-core:
+    dependencies:
+      '@tle/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/testkit: {}

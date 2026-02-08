@@ -1,0 +1,17 @@
+{
+  "name": "@tle/server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The Last Exam - Authoritative game server",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests yet\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tle/contracts": "workspace:*",
+    "@tle/game-core": "workspace:*"
+  }
+}

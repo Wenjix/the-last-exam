@@ -1,0 +1,16 @@
+{
+  "name": "@tle/web",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The Last Exam - Web client",
+  "scripts": {
+    "build": "echo \"No build yet\"",
+    "dev": "echo \"No dev server yet\"",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests yet\"",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tle/contracts": "workspace:*"
+  }
+}

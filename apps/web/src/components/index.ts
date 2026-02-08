@@ -4,3 +4,5 @@ export { NetworkError } from './NetworkError';
 export { CountdownTimer } from './CountdownTimer';
 export { BidForm } from './BidForm';
 export { EquipForm } from './EquipForm';
+export { AudioPlayer } from './AudioPlayer';
+export { ReplayViewer } from './ReplayViewer';

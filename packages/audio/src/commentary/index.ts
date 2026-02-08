@@ -15,3 +15,5 @@ export {
 } from './templates.js';
 export { HeartbeatScheduler } from './heartbeat-scheduler.js';
 export type { HeartbeatCallback } from './heartbeat-scheduler.js';
+export { CommentaryRateLimiter, CommentaryPriority } from './rate-limiter.js';
+export type { PrioritizedCommentary, RateLimiterConfig, EmitCallback } from './rate-limiter.js';

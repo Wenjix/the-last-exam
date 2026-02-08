@@ -283,7 +283,10 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
         circuitBreaker: { timeoutMs: 1_000 },
       });
 
-      const badEvent = { type: 'phase_transition', toPhase: 'briefing' } as unknown as CommentaryEvent;
+      const badEvent = {
+        type: 'phase_transition',
+        toPhase: 'briefing',
+      } as unknown as CommentaryEvent;
       expect(() => gen.processEvent(badEvent)).not.toThrow();
     });
 

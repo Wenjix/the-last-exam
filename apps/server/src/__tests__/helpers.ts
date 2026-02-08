@@ -6,7 +6,12 @@
  */
 import { v4 as uuidv4 } from 'uuid';
 import { initDatabase, getDatabase } from '../persistence/database.js';
-import { createMatch, submitBid, submitStrategy, getActiveMatch } from '../orchestrator/match-orchestrator.js';
+import {
+  createMatch,
+  submitBid,
+  submitStrategy,
+  getActiveMatch,
+} from '../orchestrator/match-orchestrator.js';
 
 // ---------------------------------------------------------------------------
 // Manager fixtures (deterministic UUIDs via fixed seed)

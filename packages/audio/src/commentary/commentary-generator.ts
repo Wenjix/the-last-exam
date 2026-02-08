@@ -92,7 +92,10 @@ export class CommentaryGenerator {
             return biddingCommentary(round);
           case 'strategy': {
             // Also include bid result commentary
-            const bidWinner = event.bidWinner as { managerName: string; amount: number } | null | undefined;
+            const bidWinner = event.bidWinner as
+              | { managerName: string; amount: number }
+              | null
+              | undefined;
             const bidText = bidResultCommentary(
               bidWinner?.managerName ?? null,
               bidWinner?.amount ?? 0,

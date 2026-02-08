@@ -150,9 +150,14 @@ export function useMatchSocket(serverUrl?: string) {
                 deadline: (data.deadline as string) || null,
                 challengeTitle: data.challengeTitle as string | undefined,
                 challengeDescription: data.challengeDescription as string | undefined,
-                dataCard: data.dataCard as { id: string; title: string; description: string } | undefined,
+                dataCard: data.dataCard as
+                  | { id: string; title: string; description: string }
+                  | undefined,
                 budgets: data.budgets as Record<string, number> | undefined,
-                bidWinner: data.bidWinner as { managerId: string; managerName: string; amount: number } | null | undefined,
+                bidWinner: data.bidWinner as
+                  | { managerId: string; managerName: string; amount: number }
+                  | null
+                  | undefined,
               });
               break;
             case 'round_result':

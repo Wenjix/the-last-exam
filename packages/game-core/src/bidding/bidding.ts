@@ -83,6 +83,7 @@ export function resolveSealedBid(bids: readonly BudgetBidEntry[], seed: string):
 export function validateBudgetBid(amount: number, remainingBudget: number): string | null {
   if (!Number.isInteger(amount)) return 'Bid must be an integer';
   if (amount < 0) return 'Bid must be non-negative';
-  if (amount > remainingBudget) return `Bid (${amount}) exceeds remaining budget (${remainingBudget})`;
+  if (amount > remainingBudget)
+    return `Bid (${amount}) exceeds remaining budget (${remainingBudget})`;
   return null;
 }

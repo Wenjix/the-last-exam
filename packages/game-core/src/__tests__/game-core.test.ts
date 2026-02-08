@@ -35,12 +35,7 @@ import {
   finalizaStandings,
 } from '../index.js';
 
-import type {
-  FsmTransitionAction,
-  BudgetBidEntry,
-  HarnessResult,
-  RoundScore,
-} from '../index.js';
+import type { FsmTransitionAction, BudgetBidEntry, HarnessResult, RoundScore } from '../index.js';
 
 // ---------------------------------------------------------------------------
 // 1. FSM Tests
@@ -74,13 +69,7 @@ describe('FSM', () => {
   describe('advanceFsm(state)', () => {
     it('progresses through all phases in correct order for round 1', () => {
       let state = createInitialState(TEST_SEED);
-      const expectedPhases: string[] = [
-        'briefing',
-        'bidding',
-        'strategy',
-        'execution',
-        'scoring',
-      ];
+      const expectedPhases: string[] = ['briefing', 'bidding', 'strategy', 'execution', 'scoring'];
 
       expect(state.phase).toBe(expectedPhases[0]);
 
@@ -229,13 +218,7 @@ describe('FSM', () => {
           (s) => s.round === round && s.phase !== 'final_standings',
         );
         const phaseNames = roundStates.map((s) => s.phase);
-        expect(phaseNames).toEqual([
-          'briefing',
-          'bidding',
-          'strategy',
-          'execution',
-          'scoring',
-        ]);
+        expect(phaseNames).toEqual(['briefing', 'bidding', 'strategy', 'execution', 'scoring']);
       }
     });
 
@@ -360,8 +343,8 @@ describe('Bidding', () => {
       ];
       const result = resolveSealedBid(bids, BID_SEED);
       expect(result.allBids.length).toBe(2);
-      expect(result.allBids.find(b => b.managerId === 'a')?.amount).toBe(10);
-      expect(result.allBids.find(b => b.managerId === 'b')?.amount).toBe(50);
+      expect(result.allBids.find((b) => b.managerId === 'a')?.amount).toBe(10);
+      expect(result.allBids.find((b) => b.managerId === 'b')?.amount).toBe(50);
     });
   });
 

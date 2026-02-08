@@ -16,7 +16,11 @@ import {
   generateBotStrategy,
   getDefaultPersonality,
 } from '../bots/bot-policies.js';
-import type { BotPersonality, BotBudgetBidContext, BotStrategyContext } from '../bots/bot-policies.js';
+import type {
+  BotPersonality,
+  BotBudgetBidContext,
+  BotStrategyContext,
+} from '../bots/bot-policies.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 

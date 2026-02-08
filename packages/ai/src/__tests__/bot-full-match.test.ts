@@ -11,7 +11,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { generateBotBudgetBid, generateBotStrategy, getDefaultPersonality } from '../bots/bot-policies.js';
+import {
+  generateBotBudgetBid,
+  generateBotStrategy,
+  getDefaultPersonality,
+} from '../bots/bot-policies.js';
 import type {
   BotBudgetBidContext,
   BotStrategyContext,

@@ -10,10 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  getRoundAssignments,
-  getDefaultDataCards,
-} from '../index.js';
+import { getRoundAssignments, getDefaultDataCards } from '../index.js';
 import { calculateScore, calculateStandings } from '@tle/game-core';
 import type { HarnessResult, RoundScore } from '@tle/game-core';
 import seedrandom from 'seedrandom';

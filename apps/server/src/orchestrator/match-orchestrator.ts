@@ -801,3 +801,46 @@ export function getMatchState(matchId: string) {
     createdAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Build a phase_transition event reflecting the current match state.
+ * Used to sync late-joining clients so they don't miss challenge info.
+ */
+export function getCurrentPhaseEvent(matchId: string): Record<string, unknown> | null {
+  const match = activeMatches.get(matchId);
+  if (!match) return null;
+
+  const assignment = match.roundAssignments[match.round - 1];
+  const event: Record<string, unknown> = {
+    type: 'phase_transition',
+    matchId: match.id,
+    round: match.round,
+    fromPhase: match.phase,
+    toPhase: match.phase,
+    deadline: match.phaseDeadline?.toISOString() || null,
+    budgets: { ...match.budgets },
+    timestamp: new Date().toISOString(),
+  };
+
+  if (assignment) {
+    event.challengeTitle = assignment.challenge.title;
+    event.challengeDescription = assignment.challenge.description;
+    event.difficulty = assignment.challenge.difficulty;
+    event.dataCard = {
+      id: assignment.dataCard.id,
+      title: assignment.dataCard.title,
+      description: assignment.dataCard.description,
+    };
+  }
+
+  if (match.dataCardWinner) {
+    const winner = match.managers.find((m) => m.id === match.dataCardWinner);
+    event.bidWinner = {
+      managerId: match.dataCardWinner,
+      managerName: winner?.name ?? 'Unknown',
+      amount: match.bids.get(match.dataCardWinner) ?? 0,
+    };
+  }
+
+  return event;
+}

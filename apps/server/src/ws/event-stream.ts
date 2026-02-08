@@ -1,4 +1,5 @@
 import type { WebSocket, WebSocketServer } from 'ws';
+import { getCurrentPhaseEvent } from '../orchestrator/match-orchestrator.js';
 
 /** Track which match each WS client is watching */
 const clientMatchMap = new Map<WebSocket, string>();
@@ -85,6 +86,11 @@ export function setupWsHandlers(wss: WebSocketServer): void {
               timestamp: new Date().toISOString(),
             }),
           );
+          // Send current phase state so late-joining clients get challenge info
+          const phaseEvent = getCurrentPhaseEvent(msg.matchId);
+          if (phaseEvent) {
+            ws.send(JSON.stringify(phaseEvent));
+          }
         } else if (msg.type === 'leave_match') {
           leaveMatch(ws);
           ws.send(

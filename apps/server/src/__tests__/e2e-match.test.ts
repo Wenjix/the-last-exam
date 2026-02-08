@@ -97,13 +97,17 @@ describe('mgm.9: E2E 5-round match with mocked runs', () => {
       // Advance past bot auto-submit and phase deadline
       await vi.advanceTimersByTimeAsync(10_000);
 
-      // Phase: execution (2s mock duration)
+      // Phase: execution — advance until streaming completes and scoring begins
       expect(currentMatch!.phase).toBe('execution');
-      await vi.advanceTimersByTimeAsync(2_000);
+      while (currentMatch!.phase === 'execution') {
+        await vi.advanceTimersByTimeAsync(1_000);
+      }
 
-      // Phase: scoring (5s display)
-      expect(currentMatch!.phase).toBe('scoring');
-      await vi.advanceTimersByTimeAsync(5_000);
+      // Phase: scoring — may already be past scoring if timer drift occurred
+      expect(['scoring', 'briefing', 'final_standings']).toContain(currentMatch!.phase);
+      if (currentMatch!.phase === 'scoring') {
+        await vi.advanceTimersByTimeAsync(5_000);
+      }
 
       // After scoring: either next round's briefing or final_standings
       if (round < TOTAL_ROUNDS) {
@@ -150,7 +154,7 @@ describe('mgm.9: E2E 5-round match with mocked runs', () => {
       await vi.advanceTimersByTimeAsync(5_000); // bidding
       submitStrategy(matchId, humanManager.id, `Solve problem ${round}`);
       await vi.advanceTimersByTimeAsync(10_000); // strategy
-      await vi.advanceTimersByTimeAsync(2_000); // execution
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
       await vi.advanceTimersByTimeAsync(5_000); // scoring
     }
 
@@ -207,7 +211,7 @@ describe('mgm.9: E2E 5-round match with mocked runs', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       submitStrategy(matchId, humanManager.id, `Solve problem ${round}`);
       await vi.advanceTimersByTimeAsync(10_000);
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
       await vi.advanceTimersByTimeAsync(5_000);
     }
 

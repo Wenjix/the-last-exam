@@ -72,8 +72,8 @@ describe('h2x.3: Demo scenarios', () => {
       submitStrategy(matchId, human.id, `Solve round ${round} efficiently`);
       await vi.advanceTimersByTimeAsync(10_000);
 
-      // execution (2s mock)
-      await vi.advanceTimersByTimeAsync(2_000);
+      // execution (10s streaming mock)
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
       // scoring (5s)
       await vi.advanceTimersByTimeAsync(5_000);

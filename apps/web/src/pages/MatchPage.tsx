@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useMatchSocket } from '../hooks/useMatchSocket';
 import type { MatchPhase } from '../hooks/useMatchSocket';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import { useAgentStreams } from '../hooks/useAgentStreams';
 import { MatchLayout } from '../components/layout/MatchLayout';
 import { Header } from '../components/layout/Header';
 import { IridescenceBackground } from '../components/ui/IridescenceBackground';
@@ -29,10 +30,18 @@ interface ManagerInfo {
   role: 'human' | 'bot';
 }
 
+const AGENT_COLORS = [
+  'var(--accent-cyan)',
+  'var(--accent-pink)',
+  'var(--accent-green)',
+  'var(--accent-orange)',
+];
+
 export function MatchPage() {
   const { id: matchId } = useParams<{ id: string }>();
   const { state, joinMatch } = useMatchSocket();
   const audioPlayer = useAudioPlayer();
+  const agentStreams = useAgentStreams(state);
   const [language, setLanguage] = useState<'en' | 'fr' | 'ja'>('en');
   const [managers, setManagers] = useState<ManagerInfo[]>([]);
   const [logEntries, setLogEntries] = useState<BattleLogEntry[]>([]);
@@ -114,6 +123,14 @@ export function MatchPage() {
         logType = 'system';
         text = `match complete — final standings`;
         break;
+      case 'agent_stream_complete': {
+        logType = 'system';
+        const agentName = managers.find((m) => m.id === event.managerId)?.name ?? 'agent';
+        const passed = event.testsPassed as number;
+        const total = event.testsTotal as number;
+        text = `${agentName}: ${passed}/${total} tests passed`;
+        break;
+      }
       default:
         return; // Skip non-game events
     }
@@ -128,6 +145,25 @@ export function MatchPage() {
       }]);
     }
   }, [state.lastEvent]);
+
+  // Keyboard shortcuts for agent focus (1-4 = focus agent, Escape = quad mode)
+  useEffect(() => {
+    if (state.phase !== 'execution') return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key >= '1' && e.key <= '4') {
+        const idx = parseInt(e.key, 10) - 1;
+        if (idx < managers.length) {
+          agentStreams.setFocusedAgent(managers[idx].id);
+        }
+      } else if (e.key === 'Escape') {
+        agentStreams.setFocusedAgent(null);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state.phase, managers, agentStreams]);
 
   // Submit bid
   const handleSubmitBid = useCallback(async (amount: number) => {
@@ -179,6 +215,8 @@ export function MatchPage() {
   );
   const ranks: Record<string, number> = {};
   sortedByScore.forEach((m, i) => { ranks[m.id] = i + 1; });
+
+  const isExecutionPhase = state.phase === 'execution';
 
   // Status text per phase
   function getManagerStatus(manager: ManagerInfo, phase: MatchPhase): string {
@@ -245,7 +283,16 @@ export function MatchPage() {
           />
         );
       case 'execution':
-        return <RunPhase round={state.round} />;
+        return (
+          <RunPhase
+            round={state.round}
+            managers={managers}
+            streams={agentStreams.streams}
+            focusedAgent={agentStreams.focusedAgent}
+            onFocusAgent={agentStreams.setFocusedAgent}
+            isQuadMode={agentStreams.isQuadMode}
+          />
+        );
       case 'scoring':
         return <ScoringPhase round={state.round} standings={state.scores} />;
       case 'final_standings':
@@ -300,7 +347,7 @@ export function MatchPage() {
             }
           />
         }
-        managerCards={managers.map((manager) => (
+        managerCards={managers.map((manager, idx) => (
           <ManagerCard
             key={manager.id}
             manager={manager}
@@ -308,6 +355,10 @@ export function MatchPage() {
             rank={ranks[manager.id]}
             budget={state.budgets[manager.id]}
             statusText={getManagerStatus(manager, state.phase)}
+            isExecutionPhase={isExecutionPhase}
+            executionState={agentStreams.streams[manager.id]}
+            accentColor={AGENT_COLORS[idx % AGENT_COLORS.length]}
+            onClick={isExecutionPhase ? () => agentStreams.setFocusedAgent(manager.id) : undefined}
           >
             {manager.role === 'human' && humanManager ? renderHumanContent(manager) : null}
           </ManagerCard>

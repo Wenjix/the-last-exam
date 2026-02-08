@@ -40,7 +40,7 @@ const PHASE_DURATIONS_MS: Record<string, number> = {
   briefing: 5_000,
   bidding: 5_000,
   strategy: 10_000,
-  execution: 2_000, // Mock: 2s instead of full 30s
+  execution: 10_000, // Mock streaming: 10s to show code generation + test results
   scoring: 5_000,
   final_standings: 0,
 };
@@ -211,14 +211,13 @@ function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
     setTimeout(() => autoSubmitBotActions(match), 500);
   }
 
-  // Execution: simulate mock run completion
+  // Execution: stream mock code generation + test results before advancing
   if (match.phase === 'execution') {
     if (match.phaseTimer) clearTimeout(match.phaseTimer);
-    const runDuration = PHASE_DURATIONS_MS.execution;
-    match.phaseTimer = setTimeout(() => {
+    emitMockAgentStreams(match, () => {
       generateMockRunResults(match);
       advancePhase(match);
-    }, runDuration);
+    });
   }
 }
 
@@ -477,6 +476,233 @@ function autoSubmitBotActions(match: ActiveMatch): void {
       }
     }
   }
+}
+
+// === Mock Streaming Code Snippets ===
+
+const MOCK_CODE_SOLUTIONS: string[][] = [
+  // Solution style 0: clean functional
+  [
+    'def solve(nums, target):',
+    '    seen = {}',
+    '    for i, num in enumerate(nums):',
+    '        complement = target - num',
+    '        if complement in seen:',
+    '            return [seen[complement], i]',
+    '        seen[num] = i',
+    '    return []',
+    '',
+    'def main():',
+    '    import sys',
+    '    data = sys.stdin.read().split()',
+    '    n = int(data[0])',
+    '    nums = [int(x) for x in data[1:n+1]]',
+    '    target = int(data[n+1])',
+    '    result = solve(nums, target)',
+    '    print(" ".join(map(str, result)))',
+    '',
+    'if __name__ == "__main__":',
+    '    main()',
+  ],
+  // Solution style 1: class-based OOP
+  [
+    'class Solution:',
+    '    def __init__(self):',
+    '        self.memo = {}',
+    '',
+    '    def solve(self, data, n):',
+    '        if n in self.memo:',
+    '            return self.memo[n]',
+    '        if n <= 1:',
+    '            return n',
+    '        result = self.solve(data, n-1) + self.solve(data, n-2)',
+    '        self.memo[n] = result',
+    '        return result',
+    '',
+    '    def run(self, input_str):',
+    '        lines = input_str.strip().split("\\n")',
+    '        n = int(lines[0])',
+    '        return str(self.solve(None, n))',
+    '',
+    'import sys',
+    'sol = Solution()',
+    'print(sol.run(sys.stdin.read()))',
+  ],
+  // Solution style 2: iterative with stack
+  [
+    'import sys',
+    'from collections import deque',
+    '',
+    'def process(s):',
+    '    stack = deque()',
+    '    mapping = {")": "(", "}": "{", "]": "["}',
+    '    for char in s:',
+    '        if char in mapping:',
+    '            top = stack.pop() if stack else "#"',
+    '            if mapping[char] != top:',
+    '                return False',
+    '        else:',
+    '            stack.append(char)',
+    '    return not stack',
+    '',
+    'data = sys.stdin.read().strip().split("\\n")',
+    'for line in data[1:]:',
+    '    print("true" if process(line) else "false")',
+  ],
+  // Solution style 3: brute-force then optimize
+  [
+    '# brute force approach first',
+    'def solve_naive(arr):',
+    '    n = len(arr)',
+    '    best = 1',
+    '    for i in range(n):',
+    '        for j in range(i+1, n):',
+    '            if arr[j] > arr[i]:',
+    '                best = max(best, 2)',
+    '    return best',
+    '',
+    '# optimized with binary search',
+    'from bisect import bisect_left',
+    '',
+    'def solve(arr):',
+    '    tails = []',
+    '    for x in arr:',
+    '        pos = bisect_left(tails, x)',
+    '        if pos == len(tails):',
+    '            tails.append(x)',
+    '        else:',
+    '            tails[pos] = x',
+    '    return len(tails)',
+    '',
+    'import sys',
+    'data = sys.stdin.read().split()',
+    'n = int(data[0])',
+    'arr = [int(x) for x in data[1:n+1]]',
+    'print(solve(arr))',
+  ],
+];
+
+/**
+ * Emit mock agent streaming events during execution phase.
+ * Simulates 4 agents writing code at different speeds, then running tests.
+ */
+function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const totalTests = 5;
+  let completedAgents = 0;
+  let phaseAdvanced = false;
+
+  // Guard against double-firing (clearTimeout may not work with fake timers in tests)
+  function safeOnComplete() {
+    if (phaseAdvanced || match.status !== 'active') return;
+    phaseAdvanced = true;
+    onComplete();
+  }
+
+  for (let i = 0; i < match.managers.length; i++) {
+    const manager = match.managers[i];
+    const codeLines = MOCK_CODE_SOLUTIONS[i % MOCK_CODE_SOLUTIONS.length];
+
+    // Vary speed per agent: 80-150ms per line
+    const lineDelay = 80 + (i * 25);
+    // Stagger start: 0-600ms offset
+    const startOffset = i * 200;
+
+    // 1) Emit agent_stream_start
+    const startTimer = setTimeout(() => {
+      if (match.status !== 'active') return;
+      emitToMatch(match.id, {
+        type: 'agent_stream_start',
+        matchId: match.id,
+        managerId: manager.id,
+        round: match.round,
+        language: 'python',
+        timestamp: new Date().toISOString(),
+      });
+    }, startOffset);
+    timers.push(startTimer);
+
+    // 2) Emit code chunks line by line
+    const codeStartTime = startOffset + 300;
+    for (let lineIdx = 0; lineIdx < codeLines.length; lineIdx++) {
+      const chunkTimer = setTimeout(() => {
+        if (match.status !== 'active') return;
+        emitToMatch(match.id, {
+          type: 'agent_stream_chunk',
+          matchId: match.id,
+          managerId: manager.id,
+          round: match.round,
+          chunkType: 'code',
+          content: codeLines[lineIdx] + '\n',
+          lineNumber: lineIdx + 1,
+          timestamp: new Date().toISOString(),
+        });
+      }, codeStartTime + lineIdx * lineDelay);
+      timers.push(chunkTimer);
+    }
+
+    // 3) Emit test results after code is done
+    const testsStartTime = codeStartTime + codeLines.length * lineDelay + 500;
+    const isDataCardWinner = manager.id === match.dataCardWinner;
+
+    for (let testIdx = 0; testIdx < totalTests; testIdx++) {
+      const testTimer = setTimeout(() => {
+        if (match.status !== 'active') return;
+        // Most tests pass; agent index affects which might fail
+        const passed = testIdx < 3 || isDataCardWinner || (i + testIdx) % 4 !== 0;
+        emitToMatch(match.id, {
+          type: 'agent_stream_test_result',
+          matchId: match.id,
+          managerId: manager.id,
+          round: match.round,
+          testIndex: testIdx,
+          totalTests,
+          passed,
+          errorMessage: passed ? undefined : 'assertion error: expected 42, got -1',
+          timestamp: new Date().toISOString(),
+        });
+      }, testsStartTime + testIdx * 300);
+      timers.push(testTimer);
+    }
+
+    // 4) Emit agent_stream_complete after all tests
+    const completeTime = testsStartTime + totalTests * 300 + 200;
+    const completeTimer = setTimeout(() => {
+      if (match.status !== 'active') return;
+      const testsPassed = isDataCardWinner ? totalTests : totalTests - (i % 2 === 0 && i > 0 ? 1 : 0);
+      emitToMatch(match.id, {
+        type: 'agent_stream_complete',
+        matchId: match.id,
+        managerId: manager.id,
+        round: match.round,
+        success: testsPassed === totalTests,
+        totalLines: codeLines.length,
+        testsPassed,
+        testsTotal: totalTests,
+        durationMs: completeTime - startOffset,
+        timestamp: new Date().toISOString(),
+      });
+
+      completedAgents++;
+      if (completedAgents === match.managers.length) {
+        // All agents done — advance after a brief pause
+        const advanceTimer = setTimeout(safeOnComplete, 500);
+        timers.push(advanceTimer);
+      }
+    }, completeTime);
+    timers.push(completeTimer);
+  }
+
+  // Safety: set a hard deadline in case something goes wrong
+  const hardDeadline = setTimeout(() => {
+    if (completedAgents < match.managers.length) {
+      safeOnComplete();
+    }
+  }, PHASE_DURATIONS_MS.execution);
+  timers.push(hardDeadline);
+
+  // Store timer so phase advance can clear it
+  match.phaseTimer = hardDeadline;
 }
 
 /**

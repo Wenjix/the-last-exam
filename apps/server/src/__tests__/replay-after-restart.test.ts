@@ -73,7 +73,7 @@ describe('28y.6: Replay after server restart', () => {
       await vi.advanceTimersByTimeAsync(5_000); // bidding
       submitStrategy(matchId, humanManager.id, `strategy round ${round}`);
       await vi.advanceTimersByTimeAsync(10_000); // strategy
-      await vi.advanceTimersByTimeAsync(2_000); // execution
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
       await vi.advanceTimersByTimeAsync(5_000); // scoring
     }
 

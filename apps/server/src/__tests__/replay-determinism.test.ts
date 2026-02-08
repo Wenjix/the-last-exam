@@ -56,8 +56,8 @@ async function driveMatchWithArtifacts(seed: string) {
     submitStrategy(matchId, humanManager.id, `strategy-seed=${seed}-round=${round}`);
     await vi.advanceTimersByTimeAsync(10_000);
 
-    // Phase: execution -> mock run completes after 2s
-    await vi.advanceTimersByTimeAsync(2_000);
+    // Phase: execution -> streaming mock completes after 10s
+    await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
     // Store deterministic artifacts for every manager in this round
     for (const manager of managers) {

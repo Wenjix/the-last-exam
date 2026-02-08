@@ -93,8 +93,8 @@ export async function runCompleteMatch(seed: string) {
     // Advance past the bot auto-submit delay and phase deadline
     await vi.advanceTimersByTimeAsync(10_000);
 
-    // Phase: execution -> mock run completes after 2s
-    await vi.advanceTimersByTimeAsync(2_000);
+    // Phase: execution -> streaming mock completes after 10s
+    await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
     // Phase: scoring -> auto-advances after 5s
     await vi.advanceTimersByTimeAsync(5_000);

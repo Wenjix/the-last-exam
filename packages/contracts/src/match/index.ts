@@ -12,6 +12,12 @@ export {
   CommentaryUpdateEventSchema,
   MatchCompleteEventSchema,
   FinalStandingsEventSchema,
+  AgentStreamLanguage,
+  AgentStreamChunkType,
+  AgentStreamStartEventSchema,
+  AgentStreamChunkEventSchema,
+  AgentStreamTestResultEventSchema,
+  AgentStreamCompleteEventSchema,
   GameEventSchema,
 } from './schemas.js';
 export type {
@@ -25,5 +31,9 @@ export type {
   CommentaryUpdateEvent,
   MatchCompleteEvent,
   FinalStandingsEvent,
+  AgentStreamStartEvent,
+  AgentStreamChunkEvent,
+  AgentStreamTestResultEvent,
+  AgentStreamCompleteEvent,
   GameEvent,
 } from './schemas.js';

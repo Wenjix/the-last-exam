@@ -1,0 +1,87 @@
+/* === Agent Theater Container === */
+
+.agent-theater {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 200px;
+  animation: fade-in 0.3s ease;
+}
+
+/* === Tab Bar (Focus Mode) === */
+
+.theater-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 4px 0;
+  flex-shrink: 0;
+}
+
+.theater-tab {
+  padding: 4px 12px;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.theater-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.theater-tab.active {
+  color: var(--tab-color, var(--text-primary));
+  background: rgba(0, 0, 0, 0.5);
+  border-bottom: 2px solid var(--tab-color, var(--accent-cyan));
+}
+
+.theater-tab.quad-btn {
+  margin-left: auto;
+  font-size: 0.8125rem;
+  padding: 4px 8px;
+}
+
+/* === Panes Layout === */
+
+.theater-panes {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  min-height: 0;
+}
+
+/* Quad mode: 4 columns */
+.quad-mode .theater-panes {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Focus mode: single column */
+.focus-mode .theater-panes {
+  grid-template-columns: 1fr;
+}
+
+/* === Responsive === */
+
+@media (max-width: 1024px) {
+  .quad-mode .theater-panes {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .quad-mode .theater-panes {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-theater {
+    min-height: 180px;
+  }
+}

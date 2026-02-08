@@ -102,8 +102,8 @@ describe('28y.5: Failure-path integration tests', () => {
       submitStrategy(matchId, human.id, 'Test strategy');
       await vi.advanceTimersByTimeAsync(10_000); // strategy deadline
 
-      // execution phase (2s mock)
-      await vi.advanceTimersByTimeAsync(2_000);
+      // execution phase (10s streaming mock)
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
       // scoring phase (5s)
       await vi.advanceTimersByTimeAsync(5_000);
@@ -176,7 +176,7 @@ describe('28y.5: Failure-path integration tests', () => {
 
       // Skip human strategy entirely
       await vi.advanceTimersByTimeAsync(10_000); // strategy deadline
-      await vi.advanceTimersByTimeAsync(2_000); // execution
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
       await vi.advanceTimersByTimeAsync(5_000); // scoring
 
       // Should now be in round 2
@@ -516,7 +516,7 @@ describe('28y.5: Failure-path integration tests', () => {
           round,
           toPhase: 'execution',
         } as CommentaryEvent);
-        await vi.advanceTimersByTimeAsync(2_000);
+        await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
         // scoring
         gen.processEvent({

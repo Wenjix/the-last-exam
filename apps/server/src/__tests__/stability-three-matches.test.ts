@@ -131,7 +131,7 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
         round,
         toPhase: 'execution',
       } as CommentaryEvent);
-      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(10_000); // execution (streaming mock)
 
       // scoring (5s)
       gen.processEvent({

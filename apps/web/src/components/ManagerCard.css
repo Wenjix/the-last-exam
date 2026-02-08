@@ -82,3 +82,56 @@
   border-radius: var(--radius-inner);
   border: 1px solid var(--border-glass);
 }
+
+/* === Execution Compact Mode === */
+
+.manager-card.exec-phase {
+  cursor: pointer;
+}
+
+.exec-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.exec-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+}
+
+.exec-tests,
+.exec-lines {
+  color: var(--text-secondary);
+}
+
+.exec-status-pill {
+  font-size: 0.5625rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-glass);
+  color: var(--text-muted);
+}
+
+.exec-status-pill.exec-coding {
+  color: var(--accent-green);
+  border-color: rgba(134, 239, 172, 0.2);
+}
+
+.exec-status-pill.exec-testing {
+  color: var(--accent-orange);
+  border-color: rgba(253, 186, 116, 0.2);
+}
+
+.exec-status-pill.exec-complete {
+  color: var(--accent-green);
+  border-color: rgba(134, 239, 172, 0.3);
+}
+
+.exec-status-pill.exec-failed {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}

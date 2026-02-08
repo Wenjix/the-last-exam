@@ -122,7 +122,12 @@ matchesRouter.post('/matches/:id/equips', (req, res) => {
     return;
   }
 
-  const success = submitEquip(req.params.id, managerId, toolSelections || [], hazardAssignments || []);
+  const success = submitEquip(
+    req.params.id,
+    managerId,
+    toolSelections || [],
+    hazardAssignments || [],
+  );
   if (!success) {
     res.status(400).json({
       error: {

@@ -291,6 +291,10 @@ export function MatchPage() {
             focusedAgent={agentStreams.focusedAgent}
             onFocusAgent={agentStreams.setFocusedAgent}
             isQuadMode={agentStreams.isQuadMode}
+            challengeTitle={state.challengeTitle ?? undefined}
+            challengeDescription={state.challengeDescription ?? undefined}
+            dataCardTitle={state.dataCard?.title}
+            dataCardDescription={state.dataCard?.description}
           />
         );
       case 'scoring':

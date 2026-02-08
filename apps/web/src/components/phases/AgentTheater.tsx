@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AgentStreamsMap } from '../../hooks/useAgentStreams';
 import { AgentStreamPane } from './AgentStreamPane';
 import './AgentTheater.css';
@@ -21,6 +22,10 @@ interface AgentTheaterProps {
   focusedAgent: string | null;
   onFocusAgent: (id: string | null) => void;
   isQuadMode: boolean;
+  challengeTitle?: string;
+  challengeDescription?: string;
+  dataCardTitle?: string;
+  dataCardDescription?: string;
 }
 
 function createIdleState() {
@@ -42,37 +47,76 @@ export function AgentTheater({
   focusedAgent,
   onFocusAgent,
   isQuadMode,
+  challengeTitle,
+  challengeDescription,
+  dataCardTitle,
+  dataCardDescription,
 }: AgentTheaterProps) {
+  const [showChallenge, setShowChallenge] = useState(false);
+  const hasChallenge = !!challengeTitle;
+
   return (
     <div className={`agent-theater ${isQuadMode ? 'quad-mode' : 'focus-mode'}`}>
-      {/* Tab bar in focus mode */}
-      {!isQuadMode && (
-        <div className="theater-tabs">
-          {managers.map((m, i) => (
+      {/* Header: challenge toggle + tabs (focus mode) */}
+      <div className="theater-header">
+        {hasChallenge && (
+          <button
+            className={`challenge-toggle ${showChallenge ? 'open' : ''}`}
+            onClick={() => setShowChallenge((v) => !v)}
+            title="view challenge"
+          >
+            <span className="challenge-toggle-title">{challengeTitle}</span>
+            <span className="challenge-toggle-chevron">{showChallenge ? '\u25B4' : '\u25BE'}</span>
+          </button>
+        )}
+
+        {!isQuadMode && (
+          <div className="theater-tabs">
+            {managers.map((m, i) => (
+              <button
+                key={m.id}
+                className={`theater-tab ${focusedAgent === m.id ? 'active' : ''}`}
+                style={{
+                  '--tab-color': AGENT_COLORS[i % AGENT_COLORS.length],
+                } as React.CSSProperties}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFocusAgent(m.id);
+                }}
+              >
+                {m.name}
+              </button>
+            ))}
             <button
-              key={m.id}
-              className={`theater-tab ${focusedAgent === m.id ? 'active' : ''}`}
-              style={{
-                '--tab-color': AGENT_COLORS[i % AGENT_COLORS.length],
-              } as React.CSSProperties}
+              className="theater-tab quad-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                onFocusAgent(m.id);
+                onFocusAgent(null);
               }}
+              title="quad view (esc)"
             >
-              {m.name}
+              {'\u2B1A'}
             </button>
-          ))}
-          <button
-            className="theater-tab quad-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onFocusAgent(null);
-            }}
-            title="quad view (esc)"
-          >
-            {'\u2B1A'}
-          </button>
+          </div>
+        )}
+      </div>
+
+      {/* Expandable challenge panel */}
+      {hasChallenge && showChallenge && (
+        <div className="challenge-panel">
+          <h4 className="challenge-panel-title">{challengeTitle}</h4>
+          {challengeDescription && (
+            <p className="challenge-panel-desc">{challengeDescription}</p>
+          )}
+          {dataCardTitle && (
+            <div className="challenge-panel-datacard">
+              <span className="challenge-panel-datacard-label">data card:</span>{' '}
+              <strong>{dataCardTitle}</strong>
+              {dataCardDescription && (
+                <span className="challenge-panel-datacard-desc"> — {dataCardDescription}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

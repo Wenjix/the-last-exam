@@ -8,12 +8,115 @@
   animation: fade-in 0.3s ease;
 }
 
+/* === Theater Header === */
+
+.theater-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 0;
+  flex-shrink: 0;
+}
+
+/* === Challenge Toggle === */
+
+.challenge-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+  max-width: 200px;
+  flex-shrink: 0;
+}
+
+.challenge-toggle:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.challenge-toggle.open {
+  color: var(--accent-cyan);
+  background: rgba(0, 0, 0, 0.5);
+  border-bottom: 2px solid var(--accent-cyan);
+}
+
+.challenge-toggle-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.challenge-toggle-chevron {
+  font-size: 0.625rem;
+  flex-shrink: 0;
+}
+
+/* === Challenge Panel (Expanded) === */
+
+.challenge-panel {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: 0 8px 8px 8px;
+  padding: 10px 14px;
+  margin: 0 6px;
+  animation: fade-in 0.2s ease;
+  flex-shrink: 0;
+}
+
+.challenge-panel-title {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.challenge-panel-desc {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.challenge-panel-datacard {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.challenge-panel-datacard-label {
+  color: var(--accent-purple);
+}
+
+.challenge-panel-datacard strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.challenge-panel-datacard-desc {
+  color: var(--text-muted);
+}
+
 /* === Tab Bar (Focus Mode) === */
 
 .theater-tabs {
   display: flex;
   gap: 2px;
-  padding: 4px 4px 0;
   flex-shrink: 0;
 }
 

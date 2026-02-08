@@ -14,6 +14,10 @@ interface RunPhaseProps {
   focusedAgent: string | null;
   onFocusAgent: (id: string | null) => void;
   isQuadMode: boolean;
+  challengeTitle?: string;
+  challengeDescription?: string;
+  dataCardTitle?: string;
+  dataCardDescription?: string;
 }
 
 export function RunPhase({
@@ -22,6 +26,10 @@ export function RunPhase({
   focusedAgent,
   onFocusAgent,
   isQuadMode,
+  challengeTitle,
+  challengeDescription,
+  dataCardTitle,
+  dataCardDescription,
 }: RunPhaseProps) {
   return (
     <AgentTheater
@@ -30,6 +38,10 @@ export function RunPhase({
       focusedAgent={focusedAgent}
       onFocusAgent={onFocusAgent}
       isQuadMode={isQuadMode}
+      challengeTitle={challengeTitle}
+      challengeDescription={challengeDescription}
+      dataCardTitle={dataCardTitle}
+      dataCardDescription={dataCardDescription}
     />
   );
 }

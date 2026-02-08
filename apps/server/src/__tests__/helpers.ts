@@ -6,7 +6,7 @@
  */
 import { v4 as uuidv4 } from 'uuid';
 import { initDatabase, getDatabase } from '../persistence/database.js';
-import { createMatch, submitBid, submitEquip } from '../orchestrator/match-orchestrator.js';
+import { createMatch, submitBid, submitStrategy, getActiveMatch } from '../orchestrator/match-orchestrator.js';
 
 // ---------------------------------------------------------------------------
 // Manager fixtures (deterministic UUIDs via fixed seed)
@@ -15,9 +15,9 @@ import { createMatch, submitBid, submitEquip } from '../orchestrator/match-orche
 export function buildManagers() {
   return [
     { id: uuidv4(), name: 'Human Player', role: 'human' as const },
-    { id: uuidv4(), name: 'Bot Alpha', role: 'bot' as const },
-    { id: uuidv4(), name: 'Bot Beta', role: 'bot' as const },
-    { id: uuidv4(), name: 'Bot Gamma', role: 'bot' as const },
+    { id: uuidv4(), name: 'Cult of S.A.M.', role: 'bot' as const },
+    { id: uuidv4(), name: 'iClaudius', role: 'bot' as const },
+    { id: uuidv4(), name: 'Star3.14', role: 'bot' as const },
   ];
 }
 
@@ -53,8 +53,8 @@ export function insertMatchRow(matchId: string, seed: string, status: string = '
 
 /**
  * Run a complete 5-round match using the orchestrator, advancing fake timers
- * to move through every phase. Submits bids and equips for the human manager
- * at appropriate phases.
+ * to move through every phase. Submits bids and strategies for the human
+ * manager at appropriate phases.
  *
  * IMPORTANT: Caller must have called `vi.useFakeTimers()` before invoking this.
  *
@@ -71,29 +71,28 @@ export async function runCompleteMatch(seed: string) {
   insertMatchRow(matchId, seed);
 
   for (let round = 1; round <= 5; round++) {
-    // Phase: briefing -> auto-advances after 10s
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    // Phase: hidden_bid (30s deadline)
-    // Submit human bid immediately
-    submitBid(matchId, humanManager.id, round * 15);
-    // Advance past the bot auto-submit delay (500ms) and the phase deadline
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    // Phase: bid_resolve -> auto-advances after 5s
+    // Phase: briefing -> auto-advances after 5s
     await vi.advanceTimersByTimeAsync(5_000);
 
-    // Phase: equip (30s deadline)
-    // Submit human equip immediately
-    submitEquip(matchId, humanManager.id, ['tool-a'], ['hazard-b']);
-    // Advance past the bot auto-submit delay and phase deadline
-    await vi.advanceTimersByTimeAsync(30_000);
+    // Phase: bidding (5s deadline)
+    // Submit human bid (clamped to remaining budget)
+    const m = getActiveMatch(matchId)!;
+    const budget = m.budgets[humanManager.id] ?? 0;
+    submitBid(matchId, humanManager.id, Math.min(round * 10, budget));
+    // Advance past the bot auto-submit delay (500ms) and the phase deadline
+    await vi.advanceTimersByTimeAsync(5_000);
 
-    // Phase: run -> mock run completes after 2s
+    // Phase: strategy (10s deadline)
+    // Submit human strategy immediately
+    submitStrategy(matchId, humanManager.id, `Solve problem ${round} efficiently`);
+    // Advance past the bot auto-submit delay and phase deadline
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Phase: execution -> mock run completes after 2s
     await vi.advanceTimersByTimeAsync(2_000);
 
-    // Phase: resolve -> auto-advances after 15s
-    await vi.advanceTimersByTimeAsync(15_000);
+    // Phase: scoring -> auto-advances after 5s
+    await vi.advanceTimersByTimeAsync(5_000);
   }
 
   // Update match status in the DB
@@ -106,48 +105,11 @@ export async function runCompleteMatch(seed: string) {
 // Expected event counts
 // ---------------------------------------------------------------------------
 
-/**
- * Calculate expected event counts for a complete 5-round match.
- *
- * Per round:
- *   - 6 phase_transition events from startPhase (briefing, hidden_bid,
- *     bid_resolve, equip, run, resolve)
- *   - 6 phase_transition events from advancePhase (the fromPhase->toPhase
- *     transitions emitted before calling startPhase again)
- *   - 1 round_result event
- *
- * Actually, let's trace the flow more carefully:
- *
- * startPhase emits a phase_transition for the CURRENT phase.
- * advancePhase emits a phase_transition for the from->to transition,
- * then calls startPhase which emits another one for the new phase.
- *
- * Round 1:
- *   createMatch -> startPhase(briefing) -> emits phase_transition (briefing->briefing)
- *   timer fires -> advancePhase: emits phase_transition (briefing->hidden_bid),
- *                  calls startPhase(hidden_bid) -> emits phase_transition (hidden_bid->hidden_bid)
- *   ...and so on for each phase
- *
- * Per round we have:
- *   - 1 startPhase emit for each of the 6 phases = 6
- *   - 1 advancePhase emit between each pair = 5 (briefing->hidden_bid, hidden_bid->bid_resolve, etc.)
- *   - 1 round_result event during run phase
- * = 12 events per round
- *
- * After round 5 resolve, advancePhase transitions to final_standings and emits:
- *   - final_standings event
- *   - match_complete event
- *
- * Total: 5 rounds * 12 + 2 (final_standings + match_complete) = 62
- *
- * But we need to verify this empirically in the test.
- */
 export const TOTAL_ROUNDS = 5;
 export const PHASES_PER_ROUND = [
   'briefing',
-  'hidden_bid',
-  'bid_resolve',
-  'equip',
-  'run',
-  'resolve',
+  'bidding',
+  'strategy',
+  'execution',
+  'scoring',
 ] as const;

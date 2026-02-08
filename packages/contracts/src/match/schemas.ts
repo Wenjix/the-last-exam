@@ -4,11 +4,10 @@ import { z } from 'zod';
 
 export const MatchPhase = z.enum([
   'briefing',
-  'hidden_bid',
-  'bid_resolve',
-  'equip',
-  'run',
-  'resolve',
+  'bidding',
+  'strategy',
+  'execution',
+  'scoring',
   'final_standings',
 ]);
 export type MatchPhase = z.infer<typeof MatchPhase>;
@@ -50,6 +49,7 @@ export const MatchStateSchema = z.object({
   managers: z.array(ManagerSchema),
   phaseDeadline: z.string().datetime().nullable(),
   scores: z.record(z.string().uuid(), z.number()),
+  budgets: z.record(z.string().uuid(), z.number()).optional(),
   createdAt: z.string().datetime(),
 });
 export type MatchState = z.infer<typeof MatchStateSchema>;

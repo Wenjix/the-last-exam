@@ -64,3 +64,13 @@ export const TraitSchema = z.object({
   visualTag: z.string().min(1),
 });
 export type Trait = z.infer<typeof TraitSchema>;
+
+// === Data Card Schema ===
+
+export const DataCardSchema = z.object({
+  id: z.string(),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  hint: z.string().min(1),
+});
+export type DataCardZod = z.infer<typeof DataCardSchema>;

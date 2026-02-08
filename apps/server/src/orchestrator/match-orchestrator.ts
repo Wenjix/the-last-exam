@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { RunnerResult } from '@tle/contracts';
-import { scoreRunnerResult, resolveAuction } from '@tle/game-core';
-import type { ScoreResult, BidEntry } from '@tle/game-core';
+import { resolveSealedBid, scoreRunnerResult } from '@tle/game-core';
+import type { ScoreResult, BudgetBidEntry } from '@tle/game-core';
 import { getRoundAssignments } from '@tle/content';
 import type { RoundAssignment } from '@tle/content';
+import { generateBotBudgetBid, generateBotStrategy, DEFAULT_BOT_CONFIGS } from '@tle/ai';
+import type { BotPersonality } from '@tle/ai';
 import { CommentaryGenerator } from '@tle/audio';
 import type { CommentaryEvent } from '@tle/audio';
 import { emitToMatch } from '../ws/event-stream.js';
@@ -24,22 +26,22 @@ commentaryGen.onCommentary((output) => {
   });
 });
 
-// === Types (inline to avoid cross-package build issues) ===
+// === Types ===
 
-const PHASES = ['briefing', 'hidden_bid', 'bid_resolve', 'equip', 'run', 'resolve'] as const;
+const PHASES = ['briefing', 'bidding', 'strategy', 'execution', 'scoring'] as const;
 type RoundPhase = (typeof PHASES)[number];
 type TerminalPhase = 'final_standings';
 type MatchPhase = RoundPhase | TerminalPhase;
 
 const TOTAL_ROUNDS = 5;
+const INITIAL_BUDGET = 100;
 
 const PHASE_DURATIONS_MS: Record<string, number> = {
-  briefing: 10_000,
-  hidden_bid: 30_000,
-  bid_resolve: 5_000,
-  equip: 30_000,
-  run: 60_000,
-  resolve: 15_000,
+  briefing: 5_000,
+  bidding: 5_000,
+  strategy: 10_000,
+  execution: 2_000, // Mock: 2s instead of full 30s
+  scoring: 5_000,
   final_standings: 0,
 };
 
@@ -63,17 +65,16 @@ interface ActiveMatch {
   roundAssignments: RoundAssignment[];
   phaseDeadline: Date | null;
   phaseTimer: ReturnType<typeof setTimeout> | null;
+  budgets: Record<string, number>;
   bids: Map<string, number>;
-  equips: Map<string, { tools: string[]; hazards: string[] }>;
+  strategies: Map<string, string>;
+  dataCardWinner: string | null;
 }
 
 const activeMatches = new Map<string, ActiveMatch>();
 
 // === Orchestrator ===
 
-/**
- * Create and start a new match.
- */
 export function createMatch(managers: ManagerState[], seed?: string): ActiveMatch {
   const matchId = uuidv4();
   const matchSeed = seed || uuidv4();
@@ -90,34 +91,27 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
     roundAssignments: getRoundAssignments(matchSeed),
     phaseDeadline: null,
     phaseTimer: null,
+    budgets: {},
     bids: new Map(),
-    equips: new Map(),
+    strategies: new Map(),
+    dataCardWinner: null,
   };
 
-  // Initialize scores
   for (const m of managers) {
     match.scores[m.id] = 0;
     match.roundScores[m.id] = [];
+    match.budgets[m.id] = INITIAL_BUDGET;
   }
 
   activeMatches.set(matchId, match);
-
-  // Start first phase
   startPhase(match);
-
   return match;
 }
 
-/**
- * Get an active match by ID.
- */
 export function getActiveMatch(matchId: string): ActiveMatch | undefined {
   return activeMatches.get(matchId);
 }
 
-/**
- * Compute current ranks from scores (1-based, lower = better).
- */
 function computeRanks(match: ActiveMatch): Record<string, number> {
   const sorted = [...match.managers].sort(
     (a, b) => (match.scores[b.id] ?? 0) - (match.scores[a.id] ?? 0),
@@ -129,6 +123,11 @@ function computeRanks(match: ActiveMatch): Record<string, number> {
   return ranks;
 }
 
+function getBotPersonality(bot: ManagerState): BotPersonality {
+  const config = DEFAULT_BOT_CONFIGS.find((c) => c.displayName === bot.name);
+  return config?.personality ?? 'aggressive';
+}
+
 /**
  * Start a phase: set deadline, emit event, schedule auto-advance.
  */
@@ -138,13 +137,11 @@ function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
 
   if (duration > 0) {
     match.phaseDeadline = new Date(now.getTime() + duration);
-    // Auto-advance when deadline expires
     match.phaseTimer = setTimeout(() => advancePhase(match), duration);
   } else {
     match.phaseDeadline = null;
   }
 
-  // Build phase transition event
   const assignment = match.roundAssignments[match.round - 1];
   const event: Record<string, unknown> = {
     type: 'phase_transition',
@@ -156,49 +153,51 @@ function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
     timestamp: now.toISOString(),
   };
 
-  // Briefing: include challenge + hazard preview
+  // Briefing: include challenge + data card preview + budgets
   if (match.phase === 'briefing' && assignment) {
     event.challengeTitle = assignment.challenge.title;
     event.challengeDescription = assignment.challenge.description;
     event.difficulty = assignment.challenge.difficulty;
-    event.hazardName = assignment.hazard.name;
-    event.hazardDescription = assignment.hazard.description;
-  }
-
-  // Bid resolve: include auction results
-  if (match.phase === 'bid_resolve' && match.bids.size > 0) {
-    const ranks = computeRanks(match);
-    const bidEntries: BidEntry[] = [...match.bids.entries()].map(([managerId, amount]) => ({
-      managerId,
-      amount,
-      currentRank: ranks[managerId] ?? match.managers.length,
-    }));
-    const auctionResults = resolveAuction(bidEntries, `${match.seed}:r${match.round}`);
-    event.auctionResults = auctionResults.map((r) => ({
-      managerId: r.managerId,
-      managerName: match.managers.find((m) => m.id === r.managerId)?.name ?? 'Unknown',
-      amount: r.amount,
-      pickOrder: r.pickOrder,
-    }));
-  }
-
-  // Equip: include available tools and round hazard
-  if (match.phase === 'equip' && assignment) {
-    event.availableTools = assignment.availableTools.map((t) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description,
-    }));
-    event.roundHazard = {
-      id: assignment.hazard.id,
-      name: assignment.hazard.name,
-      description: assignment.hazard.description,
+    event.dataCard = {
+      id: assignment.dataCard.id,
+      title: assignment.dataCard.title,
+      description: assignment.dataCard.description,
     };
+    event.budgets = { ...match.budgets };
+  }
+
+  // Bidding: data card info + budgets
+  if (match.phase === 'bidding' && assignment) {
+    event.dataCard = {
+      id: assignment.dataCard.id,
+      title: assignment.dataCard.title,
+      description: assignment.dataCard.description,
+    };
+    event.budgets = { ...match.budgets };
+  }
+
+  // Strategy: include bid result info
+  if (match.phase === 'strategy') {
+    event.budgets = { ...match.budgets };
+    if (match.dataCardWinner) {
+      const winner = match.managers.find((m) => m.id === match.dataCardWinner);
+      event.bidWinner = {
+        managerId: match.dataCardWinner,
+        managerName: winner?.name ?? 'Unknown',
+        amount: match.bids.get(match.dataCardWinner) ?? 0,
+      };
+    } else {
+      event.bidWinner = null;
+    }
+    // Include all bids (revealed after bidding)
+    event.allBids = [...match.bids.entries()].map(([managerId, amount]) => ({
+      managerId,
+      managerName: match.managers.find((m) => m.id === managerId)?.name ?? 'Unknown',
+      amount,
+    }));
   }
 
   emitToMatch(match.id, event);
-
-  // Feed commentary generator
   commentaryGen.processEvent(event as CommentaryEvent);
 
   try {
@@ -207,22 +206,15 @@ function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
     // DB may not be initialized in tests
   }
 
-  // For bot actions in bid/equip phases, auto-submit after short delay
-  if (match.phase === 'hidden_bid' || match.phase === 'equip') {
+  // Auto-submit bot actions for bidding and strategy phases
+  if (match.phase === 'bidding' || match.phase === 'strategy') {
     setTimeout(() => autoSubmitBotActions(match), 500);
   }
 
-  // For instant phases (bid_resolve, resolve), auto-advance after brief display
-  if (match.phase === 'bid_resolve') {
-    // Reveal bids then advance
+  // Execution: simulate mock run completion
+  if (match.phase === 'execution') {
     if (match.phaseTimer) clearTimeout(match.phaseTimer);
-    match.phaseTimer = setTimeout(() => advancePhase(match), PHASE_DURATIONS_MS.bid_resolve);
-  }
-
-  if (match.phase === 'run') {
-    // Simulate run completion with mock results
-    if (match.phaseTimer) clearTimeout(match.phaseTimer);
-    const runDuration = 2000; // Mock: 2s instead of full 60s
+    const runDuration = PHASE_DURATIONS_MS.execution;
     match.phaseTimer = setTimeout(() => {
       generateMockRunResults(match);
       advancePhase(match);
@@ -242,7 +234,11 @@ function advancePhase(match: ActiveMatch): void {
 
   const fromPhase = match.phase;
 
-  // Determine next phase
+  // Resolve sealed bid when transitioning from bidding to strategy
+  if (fromPhase === 'bidding') {
+    resolveBidding(match);
+  }
+
   const phaseIndex = PHASES.indexOf(match.phase as RoundPhase);
 
   if (match.phase === 'final_standings') {
@@ -250,38 +246,64 @@ function advancePhase(match: ActiveMatch): void {
   }
 
   if (phaseIndex === PHASES.length - 1) {
-    // End of round (resolve)
+    // End of round (scoring)
     clearRoundCache(match.id, match.round);
 
     if (match.round >= TOTAL_ROUNDS) {
-      // Match complete -> final standings
       match.phase = 'final_standings';
       match.status = 'completed';
       emitFinalStandings(match);
       return;
     }
-    // Next round
+    // Next round — clear per-round state
     match.round += 1;
     match.phase = 'briefing';
     match.bids.clear();
-    match.equips.clear();
+    match.strategies.clear();
+    match.dataCardWinner = null;
   } else {
     match.phase = PHASES[phaseIndex + 1];
   }
 
-  // Delegate to startPhase (single source of truth for phase_transition events)
   startPhase(match, fromPhase);
 }
 
 /**
- * Submit a bid for a manager.
+ * Resolve the sealed bid auction and update budgets.
+ */
+function resolveBidding(match: ActiveMatch): void {
+  const ranks = computeRanks(match);
+
+  const bidEntries: BudgetBidEntry[] = match.managers.map((m) => ({
+    managerId: m.id,
+    amount: match.bids.get(m.id) ?? 0,
+    currentRank: ranks[m.id] ?? match.managers.length,
+    remainingBudget: match.budgets[m.id] ?? 0,
+  }));
+
+  const result = resolveSealedBid(bidEntries, `${match.seed}:r${match.round}`);
+
+  // Update budgets
+  for (const [managerId, budget] of Object.entries(result.updatedBudgets)) {
+    match.budgets[managerId] = budget;
+  }
+
+  match.dataCardWinner = result.winnerId;
+}
+
+/**
+ * Submit a bid for a manager (data card auction).
  */
 export function submitBid(matchId: string, managerId: string, amount: number): boolean {
   const match = activeMatches.get(matchId);
-  if (!match || match.phase !== 'hidden_bid') return false;
+  if (!match || match.phase !== 'bidding') return false;
+
+  // Validate bid is within budget
+  const budget = match.budgets[managerId] ?? 0;
+  if (amount > budget) return false;
+
   match.bids.set(managerId, amount);
 
-  // Emit bid event (no amount — hidden bid)
   emitToMatch(matchId, {
     type: 'bid_submitted',
     matchId,
@@ -294,25 +316,19 @@ export function submitBid(matchId: string, managerId: string, amount: number): b
 }
 
 /**
- * Submit equip selections for a manager.
+ * Submit a strategy prompt for a manager.
  */
-export function submitEquip(
-  matchId: string,
-  managerId: string,
-  tools: string[],
-  hazards: string[],
-): boolean {
+export function submitStrategy(matchId: string, managerId: string, prompt: string): boolean {
   const match = activeMatches.get(matchId);
-  if (!match || match.phase !== 'equip') return false;
-  match.equips.set(managerId, { tools, hazards });
+  if (!match || match.phase !== 'strategy') return false;
 
-  // Emit equip event
+  match.strategies.set(managerId, prompt);
+
   emitToMatch(matchId, {
-    type: 'equip_submitted',
+    type: 'strategy_submitted',
     matchId,
     managerId,
     round: match.round,
-    toolIds: tools,
     timestamp: new Date().toISOString(),
   });
 
@@ -321,7 +337,6 @@ export function submitEquip(
 
 // === Runner Result Application ===
 
-/** Result of applying a runner result to a match. */
 export interface ApplyRunnerResultOutcome {
   readonly success: boolean;
   readonly error?: string;
@@ -330,21 +345,6 @@ export interface ApplyRunnerResultOutcome {
   readonly scoreResult?: ScoreResult;
 }
 
-/**
- * Apply a real runner result to the match state.
- *
- * This function:
- *  1. Validates the runner result belongs to an active match in the run/resolve phase.
- *  2. Scores the result using game-core's scoring engine (with correctness gate).
- *  3. Updates the match scores and roundScores.
- *  4. Emits a scored event over WebSocket.
- *
- * CORRECTNESS GATE: Failed submissions (success=false) or zero-pass results
- * receive exactly 0 points via scoreRunnerResult.
- *
- * @param runnerResult - The completed runner result from harness execution.
- * @returns            - Outcome indicating success or failure with details.
- */
 export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResultOutcome {
   const match = activeMatches.get(runnerResult.matchId);
 
@@ -366,7 +366,6 @@ export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResult
     };
   }
 
-  // Verify the runner result is for the current round
   if (runnerResult.round !== match.round) {
     return {
       success: false,
@@ -376,7 +375,6 @@ export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResult
     };
   }
 
-  // Verify the agent belongs to this match
   const manager = match.managers.find((m) => m.id === runnerResult.agentId);
   if (!manager) {
     return {
@@ -387,28 +385,23 @@ export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResult
     };
   }
 
-  // Score the result using game-core scoring engine (applies correctness gate)
   const { scoreResult } = scoreRunnerResult(runnerResult);
 
-  // Update match state with the scored result
   if (!match.roundScores[runnerResult.agentId]) {
     match.roundScores[runnerResult.agentId] = [];
   }
 
-  // Pad roundScores if needed (in case earlier rounds weren't recorded)
   while (match.roundScores[runnerResult.agentId].length < runnerResult.round - 1) {
     match.roundScores[runnerResult.agentId].push(0);
   }
 
   match.roundScores[runnerResult.agentId][runnerResult.round - 1] = scoreResult.totalScore;
 
-  // Recalculate total score from all round scores
   match.scores[runnerResult.agentId] = match.roundScores[runnerResult.agentId].reduce(
     (sum, s) => sum + s,
     0,
   );
 
-  // Emit scored event
   const scoredEvent = {
     type: 'submission_scored',
     matchId: match.id,
@@ -446,38 +439,58 @@ export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResult
  */
 function autoSubmitBotActions(match: ActiveMatch): void {
   const bots = match.managers.filter((m) => m.role === 'bot');
+  const ranks = computeRanks(match);
 
-  if (match.phase === 'hidden_bid') {
+  if (match.phase === 'bidding') {
     for (const bot of bots) {
       if (!match.bids.has(bot.id)) {
-        // Simple deterministic bid: round * 10 + bot index * 5
-        const botIndex = match.managers.indexOf(bot);
-        const bid = match.round * 10 + botIndex * 5;
+        const personality = getBotPersonality(bot);
+        const bid = generateBotBudgetBid(
+          personality,
+          {
+            round: match.round,
+            totalRounds: TOTAL_ROUNDS,
+            currentRank: ranks[bot.id] ?? match.managers.length,
+            totalManagers: match.managers.length,
+            remainingBudget: match.budgets[bot.id] ?? 0,
+          },
+          match.seed,
+        );
         match.bids.set(bot.id, bid);
       }
     }
   }
 
-  if (match.phase === 'equip') {
-    const assignment = match.roundAssignments[match.round - 1];
+  if (match.phase === 'strategy') {
     for (const bot of bots) {
-      if (!match.equips.has(bot.id)) {
-        // Bots pick up to 1 tool from the round pool
-        const toolIds = assignment?.availableTools.slice(0, 1).map((t) => t.id) ?? [];
-        match.equips.set(bot.id, { tools: toolIds, hazards: [] });
+      if (!match.strategies.has(bot.id)) {
+        const personality = getBotPersonality(bot);
+        const strategy = generateBotStrategy({
+          personality,
+          round: match.round,
+          totalRounds: TOTAL_ROUNDS,
+          currentRank: ranks[bot.id] ?? match.managers.length,
+          hasDataCard: match.dataCardWinner === bot.id,
+          seed: match.seed,
+        });
+        match.strategies.set(bot.id, strategy);
       }
     }
   }
 }
 
 /**
- * Generate mock run results (will be replaced by real runner in E4).
+ * Generate mock run results.
  */
 function generateMockRunResults(match: ActiveMatch): void {
   for (const manager of match.managers) {
-    // Mock score: deterministic based on round and manager index
     const managerIndex = match.managers.indexOf(manager);
-    const mockScore = 500 + match.round * 50 + managerIndex * 25;
+    let mockScore = 500 + match.round * 50 + managerIndex * 25;
+
+    // Data card winner gets a slight bonus
+    if (manager.id === match.dataCardWinner) {
+      mockScore += 50;
+    }
 
     if (!match.roundScores[manager.id]) {
       match.roundScores[manager.id] = [];
@@ -486,7 +499,6 @@ function generateMockRunResults(match: ActiveMatch): void {
     match.scores[manager.id] = (match.scores[manager.id] || 0) + mockScore;
   }
 
-  // Emit round result
   const roundResultEvent = {
     type: 'round_result',
     matchId: match.id,
@@ -494,15 +506,13 @@ function generateMockRunResults(match: ActiveMatch): void {
     results: match.managers.map((m) => ({
       managerId: m.id,
       score: match.roundScores[m.id]![match.round - 1],
-      correctness: 0.8 + Math.random() * 0.2, // Mock
+      correctness: 0.8 + Math.random() * 0.2,
     })),
     standings: { ...match.scores },
     timestamp: new Date().toISOString(),
   };
 
   emitToMatch(match.id, roundResultEvent);
-
-  // Feed commentary generator
   commentaryGen.processEvent(roundResultEvent as unknown as CommentaryEvent);
 
   try {
@@ -512,11 +522,7 @@ function generateMockRunResults(match: ActiveMatch): void {
   }
 }
 
-/**
- * Emit final standings and match_complete events.
- */
 function emitFinalStandings(match: ActiveMatch): void {
-  // Sort by total score descending
   const sorted = [...match.managers]
     .map((m) => ({
       managerId: m.id,
@@ -542,8 +548,6 @@ function emitFinalStandings(match: ActiveMatch): void {
 
   emitToMatch(match.id, standingsEvent);
   emitToMatch(match.id, completeEvent);
-
-  // Feed commentary generator
   commentaryGen.processEvent(standingsEvent as unknown as CommentaryEvent);
 
   try {
@@ -554,9 +558,6 @@ function emitFinalStandings(match: ActiveMatch): void {
   }
 }
 
-/**
- * Get match state as API response.
- */
 export function getMatchState(matchId: string) {
   const match = activeMatches.get(matchId);
   if (!match) return null;
@@ -569,6 +570,7 @@ export function getMatchState(matchId: string) {
     currentPhase: match.phase,
     managers: match.managers,
     scores: match.scores,
+    budgets: match.budgets,
     phaseDeadline: match.phaseDeadline?.toISOString() || null,
     createdAt: new Date().toISOString(),
   };

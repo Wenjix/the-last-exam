@@ -378,7 +378,7 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
         type: 'phase_transition',
         matchId: 'match-hb',
         round: 1,
-        toPhase: 'run',
+        toPhase: 'execution',
       });
 
       // Advance time while paused to let circuit breaker resolve
@@ -573,8 +573,8 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
       limiter.start();
 
       // ---- Simulate 5-round match event sequence ----
-      const phases = ['briefing', 'bid_resolve', 'equip', 'run'] as const;
-      const phaseTimings = [10_000, 5_000, 30_000, 60_000] as const;
+      const phases = ['briefing', 'bidding', 'strategy', 'execution'] as const;
+      const phaseTimings = [5_000, 5_000, 10_000, 2_000] as const;
       const matchId = 'match-full-pipeline';
 
       // Track per-phase wall-clock time to verify non-blocking
@@ -596,16 +596,16 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
             toPhase: phase,
           });
 
-          // Start heartbeats during run phase
-          if (phase === 'run') {
+          // Start heartbeats during execution phase
+          if (phase === 'execution') {
             scheduler.start(round);
           }
 
           // Advance through the phase duration
           await vi.advanceTimersByTimeAsync(duration);
 
-          // Stop heartbeats at end of run phase
-          if (phase === 'run') {
+          // Stop heartbeats at end of execution phase
+          if (phase === 'execution') {
             scheduler.stop();
           }
 
@@ -691,11 +691,11 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
       // Continue processing events via the generator -- they should be
       // silently skipped because the circuit is open.
       const phaseEvents = [
-        { type: 'phase_transition', matchId, round: 1, toPhase: 'equip' },
-        { type: 'phase_transition', matchId, round: 1, toPhase: 'run' },
+        { type: 'phase_transition', matchId, round: 1, toPhase: 'strategy' },
+        { type: 'phase_transition', matchId, round: 1, toPhase: 'execution' },
         { type: 'round_result', matchId, round: 1, results: [{ managerId: 'mgr-1', score: 100 }] },
         { type: 'phase_transition', matchId, round: 2, toPhase: 'briefing' },
-        { type: 'phase_transition', matchId, round: 2, toPhase: 'bid_resolve' },
+        { type: 'phase_transition', matchId, round: 2, toPhase: 'bidding' },
         {
           type: 'final_standings',
           matchId,
@@ -742,8 +742,8 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
       // The critical assertion is that advanceTimersByTimeAsync(duration)
       // always advances exactly `duration` ms, regardless of what commentary
       // is doing in the background.
-      const durations = [10_000, 30_000, 5_000, 30_000, 60_000, 15_000];
-      const phaseNames = ['briefing', 'hidden_bid', 'bid_resolve', 'equip', 'run', 'resolve'];
+      const durations = [5_000, 5_000, 10_000, 2_000, 5_000];
+      const phaseNames = ['briefing', 'bidding', 'strategy', 'execution', 'scoring'];
 
       let totalElapsed = 0;
 
@@ -768,7 +768,7 @@ describe('bze.7: Commentary stability -- non-blocking verification', () => {
       }
 
       // Total match time for one round must be exactly the sum of phase durations
-      expect(totalElapsed).toBe(150_000);
+      expect(totalElapsed).toBe(27_000);
 
       // Some commentary should have been generated for valid phase events
       await vi.advanceTimersByTimeAsync(1_000);

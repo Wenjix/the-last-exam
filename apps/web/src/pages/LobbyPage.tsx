@@ -24,9 +24,9 @@ export function LobbyPage() {
         body: JSON.stringify({
           managers: [
             { name, role: 'human' },
-            { name: 'bot-alpha', role: 'bot' },
-            { name: 'bot-beta', role: 'bot' },
-            { name: 'bot-gamma', role: 'bot' },
+            { name: 'Cult of S.A.M.', role: 'bot' },
+            { name: 'iClaudius', role: 'bot' },
+            { name: 'Star3.14', role: 'bot' },
           ],
         }),
       });
@@ -55,7 +55,7 @@ export function LobbyPage() {
               <DecryptedText text="the last exam" speed={60} />
             </div>
             <p className="lobby-subtitle">
-              ai coding competition — manage your agent, bid for tools, sabotage rivals
+              ai coding competition — manage your agent, bid for data, outcode rivals
             </p>
 
             <div className="lobby-form">

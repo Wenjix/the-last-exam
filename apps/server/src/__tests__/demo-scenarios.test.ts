@@ -3,12 +3,10 @@
  *
  * Three scripted scenarios designed to showcase interesting match dynamics:
  *   1. Dramatic Comeback  — trailing manager surges in late rounds
- *   2. Mistral Showcase   — Mistral Agent dominates with aggressive strategy
+ *   2. Champion Showcase   — Cult of S.A.M. dominates with aggressive strategy
  *   3. Close Finish       — managers finish within tight score margins
  *
  * Each scenario uses a fixed seed for deterministic, reproducible outcomes.
- * Run via: pnpm vitest run apps/server/src/__tests__/demo-scenarios.test.ts
- * Or via: ./scripts/demo.sh
  */
 
 import { initDatabase, closeDatabase } from '../persistence/database.js';
@@ -17,12 +15,12 @@ import {
   createMatch,
   getActiveMatch,
   submitBid,
-  submitEquip,
+  submitStrategy,
 } from '../orchestrator/match-orchestrator.js';
 import { reconstructReplay } from '../services/replay-service.js';
 import { buildManagers, insertMatchRow, TOTAL_ROUNDS } from './helpers.js';
 import { DEFAULT_BOT_CONFIGS } from '@tle/ai';
-import { getRoundAssignments, validateRoundBalance } from '@tle/content';
+import { getRoundAssignments } from '@tle/content';
 import { generateMultilingualCommentary, SUPPORTED_LANGUAGES } from '@tle/audio';
 import type { CommentaryLanguage } from '@tle/audio';
 
@@ -61,25 +59,24 @@ describe('h2x.3: Demo scenarios', () => {
     insertMatchRow(matchId, seed);
 
     for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-      // briefing
-      await vi.advanceTimersByTimeAsync(10_000);
-
-      // hidden_bid
-      submitBid(matchId, human.id, humanBidFn(round));
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      // bid_resolve
+      // briefing (5s)
       await vi.advanceTimersByTimeAsync(5_000);
 
-      // equip
-      submitEquip(matchId, human.id, ['tool-a'], ['hazard-b']);
-      await vi.advanceTimersByTimeAsync(30_000);
+      // bidding (5s)
+      const m = getActiveMatch(matchId)!;
+      const budget = m.budgets[human.id] ?? 0;
+      submitBid(matchId, human.id, Math.min(humanBidFn(round), budget));
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      // run
+      // strategy (10s)
+      submitStrategy(matchId, human.id, `Solve round ${round} efficiently`);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      // execution (2s mock)
       await vi.advanceTimersByTimeAsync(2_000);
 
-      // resolve
-      await vi.advanceTimersByTimeAsync(15_000);
+      // scoring (5s)
+      await vi.advanceTimersByTimeAsync(5_000);
     }
 
     insertMatchRow(matchId, seed, 'completed');
@@ -107,11 +104,11 @@ describe('h2x.3: Demo scenarios', () => {
         expect(final.roundScores[m.id]).toHaveLength(5);
       }
 
-      // Scores increase per round (mock scoring is round-dependent)
+      // Scores generally increase per round (data card bonuses may cause ties)
       for (const m of managers) {
         const rs = final.roundScores[m.id]!;
         for (let i = 1; i < rs.length; i++) {
-          expect(rs[i]!).toBeGreaterThan(rs[i - 1]!);
+          expect(rs[i]!).toBeGreaterThanOrEqual(rs[i - 1]!);
         }
       }
     });
@@ -145,45 +142,47 @@ describe('h2x.3: Demo scenarios', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Scenario 2: Mistral Showcase
+  // Scenario 2: Champion Showcase (Cult of S.A.M.)
   // -----------------------------------------------------------------------
 
-  describe('Scenario 2: Mistral Showcase', () => {
-    it('Mistral bot config exists and is aggressive', () => {
-      const mistralBot = DEFAULT_BOT_CONFIGS.find((b) => b.name === 'mistral-agent');
-      expect(mistralBot).toBeDefined();
-      expect(mistralBot!.personality).toBe('aggressive');
-      expect(mistralBot!.modelProvider).toBe('mistral-codestral');
-      expect(mistralBot!.visualTag).toBe('Mistral AI');
+  describe('Scenario 2: Champion Showcase', () => {
+    it('Cult of S.A.M. bot config exists and is aggressive', () => {
+      const samBot = DEFAULT_BOT_CONFIGS.find((b) => b.name === 'cult-of-sam');
+      expect(samBot).toBeDefined();
+      expect(samBot!.personality).toBe('aggressive');
+      expect(samBot!.displayName).toBe('Cult of S.A.M.');
     });
 
-    it('match completes with Mistral bot participating', async () => {
+    it('match completes with named champion bots participating', async () => {
       const { matchId, managers } = await driveMatch(
-        'demo-mistral-seed-001',
+        'demo-champion-seed-001',
         (round) => round * 20, // Aggressive human too
       );
 
       const final = getActiveMatch(matchId)!;
       expect(final.status).toBe('completed');
 
-      // All bots have scores (including the one configured as Mistral)
+      // All bots have scores
       for (const m of managers) {
         expect(final.scores[m.id]).toBeGreaterThan(0);
       }
     });
 
-    it('round balance is valid for the demo seed', () => {
-      const assignments = getRoundAssignments('demo-mistral-seed-001');
+    it('round assignments are valid for the demo seed', () => {
+      const assignments = getRoundAssignments('demo-champion-seed-001');
       expect(assignments).toHaveLength(5);
-
-      const errors = validateRoundBalance(assignments);
-      expect(errors).toEqual([]);
 
       // Difficulty increases
       for (let i = 1; i < assignments.length; i++) {
         expect(assignments[i]!.challenge.difficulty).toBeGreaterThanOrEqual(
           assignments[i - 1]!.challenge.difficulty,
         );
+      }
+
+      // Each round has a data card
+      for (const a of assignments) {
+        expect(a.dataCard).toBeDefined();
+        expect(a.dataCard.id).toBeTruthy();
       }
     });
   });

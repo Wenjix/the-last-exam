@@ -7,9 +7,10 @@ export type {
 } from './commentary-generator.js';
 export {
   briefingCommentary,
-  bidRevealCommentary,
-  equipCommentary,
-  runStartCommentary,
+  biddingCommentary,
+  bidResultCommentary,
+  strategyCommentary,
+  executionCommentary,
   roundResultCommentary,
   finalStandingsCommentary,
   heartbeatCommentary,

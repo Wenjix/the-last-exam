@@ -11,6 +11,7 @@ interface ManagerCardProps {
   manager: ManagerInfo;
   score: number;
   rank?: number;
+  budget?: number;
   totalManagers?: number;
   statusText?: string;
   children?: React.ReactNode;
@@ -22,6 +23,7 @@ export function ManagerCard({
   manager,
   score,
   rank,
+  budget,
   statusText,
   children,
   expanded = false,
@@ -44,6 +46,12 @@ export function ManagerCard({
             </span>
           )}
         </div>
+
+        {budget != null && (
+          <div style={{ fontSize: '0.75rem', color: 'var(--accent-purple, #a78bfa)', marginTop: '2px' }}>
+            budget: {budget}
+          </div>
+        )}
 
         <div className="manager-card-body">
           {statusText && !children && (

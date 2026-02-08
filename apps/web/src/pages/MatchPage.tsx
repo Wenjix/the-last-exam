@@ -10,17 +10,16 @@ import { LoadingDots } from '../components/ui/LoadingDots';
 import { ManagerCard } from '../components/ManagerCard';
 import { BattleLog } from '../components/BattleLog';
 import type { BattleLogEntry } from '../components/BattleLog';
-import { BidForm } from '../components/BidForm';
-import { EquipForm } from '../components/EquipForm';
+import { BudgetBidForm } from '../components/BudgetBidForm';
+import { StrategyForm } from '../components/StrategyForm';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { BriefingPhase } from '../components/phases/BriefingPhase';
-import { HiddenBidPhase } from '../components/phases/HiddenBidPhase';
-import { BidResolvePhase } from '../components/phases/BidResolvePhase';
-import { EquipPhase } from '../components/phases/EquipPhase';
+import { BiddingPhase } from '../components/phases/BiddingPhase';
+import { StrategyPhase } from '../components/phases/StrategyPhase';
 import { RunPhase } from '../components/phases/RunPhase';
-import { ResolvePhase } from '../components/phases/ResolvePhase';
+import { ScoringPhase } from '../components/phases/ScoringPhase';
 import { FinalStandingsPhase } from '../components/phases/FinalStandingsPhase';
 import './MatchPage.css';
 
@@ -81,12 +80,10 @@ export function MatchPage() {
         logType = 'phase_transition';
         const toPhase = event.toPhase as string;
         if (toPhase === 'briefing' && event.challengeTitle) {
-          const hazardPart = event.hazardName ? ` | hazard: ${event.hazardName}` : '';
-          text = `round ${event.round}: ${event.challengeTitle}${hazardPart}`;
-        } else if (toPhase === 'equip' && event.roundHazard) {
-          text = `equip phase — hazard: ${(event.roundHazard as { name: string }).name}`;
-        } else if (toPhase === 'bid_resolve') {
-          text = `bid results (round ${event.round})`;
+          text = `round ${event.round}: ${event.challengeTitle}`;
+        } else if (toPhase === 'strategy' && event.bidWinner) {
+          const winner = event.bidWinner as { managerName: string; amount: number };
+          text = `${winner.managerName} won data card for ${winner.amount} pts`;
         } else {
           text = `phase: ${toPhase} (round ${event.round})`;
         }
@@ -109,24 +106,16 @@ export function MatchPage() {
         logType = 'bid';
         text = `bid received`;
         break;
-      case 'equip_submitted':
-        logType = 'equip';
-        text = `equipment submitted`;
-        break;
-      case 'run_started':
-        logType = 'run';
-        text = `agent run started`;
-        break;
-      case 'run_completed':
-        logType = 'run';
-        text = `agent run completed`;
+      case 'strategy_submitted':
+        logType = 'system';
+        text = `strategy submitted`;
         break;
       case 'final_standings':
         logType = 'system';
         text = `match complete — final standings`;
         break;
       default:
-        return; // Skip non-game events (connected, joined_match, match_complete, etc.)
+        return; // Skip non-game events
     }
 
     if (text) {
@@ -162,26 +151,25 @@ export function MatchPage() {
     }
   }, [matchId, managers, state.round]);
 
-  // Submit equip
-  const handleSubmitEquip = useCallback(async (toolIds: string[], hazardIds: string[]) => {
+  // Submit strategy
+  const handleSubmitStrategy = useCallback(async (prompt: string) => {
     if (!matchId) return;
     const humanManager = managers.find((m) => m.role === 'human');
     if (!humanManager) return;
 
-    const res = await fetch(`/matches/${matchId}/equips`, {
+    const res = await fetch(`/matches/${matchId}/strategy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         managerId: humanManager.id,
         round: state.round,
-        toolSelections: toolIds,
-        hazardAssignments: hazardIds,
+        prompt,
       }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as { error?: { message?: string } }).error?.message || 'equip failed');
+      throw new Error((data as { error?: { message?: string } }).error?.message || 'strategy failed');
     }
   }, [matchId, managers, state.round]);
 
@@ -196,17 +184,18 @@ export function MatchPage() {
   function getManagerStatus(manager: ManagerInfo, phase: MatchPhase): string {
     if (manager.role === 'bot') {
       switch (phase) {
-        case 'hidden_bid': return 'thinking...';
-        case 'equip': return 'selecting...';
-        case 'run': return 'executing...';
+        case 'bidding': return 'considering...';
+        case 'strategy': return 'crafting strategy...';
+        case 'execution': return 'solving...';
         default: return 'waiting';
       }
     }
     switch (phase) {
       case 'briefing': return 'reviewing challenge';
-      case 'hidden_bid': return 'place your bid below';
-      case 'equip': return 'select equipment below';
-      case 'run': return 'agent running...';
+      case 'bidding': return 'place your bid below';
+      case 'strategy': return 'write agent instructions';
+      case 'execution': return 'agent running...';
+      case 'scoring': return 'viewing results';
       default: return 'waiting';
     }
   }
@@ -235,20 +224,30 @@ export function MatchPage() {
             round={state.round}
             challengeTitle={state.challengeTitle ?? undefined}
             challengeDescription={state.challengeDescription ?? undefined}
-            hazardName={state.roundHazard?.name}
-            hazardDescription={state.roundHazard?.description}
+            dataCardTitle={state.dataCard?.title}
+            dataCardDescription={state.dataCard?.description}
           />
         );
-      case 'hidden_bid':
-        return <HiddenBidPhase round={state.round} />;
-      case 'bid_resolve':
-        return <BidResolvePhase round={state.round} results={state.auctionResults ?? undefined} />;
-      case 'equip':
-        return <EquipPhase round={state.round} />;
-      case 'run':
+      case 'bidding':
+        return (
+          <BiddingPhase
+            round={state.round}
+            dataCardTitle={state.dataCard?.title}
+            dataCardDescription={state.dataCard?.description}
+            budgets={state.budgets}
+          />
+        );
+      case 'strategy':
+        return (
+          <StrategyPhase
+            round={state.round}
+            bidWinner={state.bidWinner}
+          />
+        );
+      case 'execution':
         return <RunPhase round={state.round} />;
-      case 'resolve':
-        return <ResolvePhase round={state.round} standings={state.scores} />;
+      case 'scoring':
+        return <ScoringPhase round={state.round} standings={state.scores} />;
       case 'final_standings':
         return null; // Rendered as overlay
       default:
@@ -258,25 +257,24 @@ export function MatchPage() {
 
   // Render manager card content for human manager
   function renderHumanContent(manager: ManagerInfo) {
-    if (state.phase === 'hidden_bid') {
+    if (state.phase === 'bidding') {
       return (
-        <BidForm
+        <BudgetBidForm
           matchId={matchId!}
           managerId={manager.id}
           round={state.round}
+          remainingBudget={state.budgets[manager.id] ?? 100}
           onSubmit={handleSubmitBid}
         />
       );
     }
-    if (state.phase === 'equip') {
+    if (state.phase === 'strategy') {
       return (
-        <EquipForm
+        <StrategyForm
           matchId={matchId!}
           managerId={manager.id}
           round={state.round}
-          availableTools={state.availableTools}
-          availableHazards={state.roundHazard ? [state.roundHazard] : []}
-          onSubmit={handleSubmitEquip}
+          onSubmit={handleSubmitStrategy}
         />
       );
     }
@@ -308,6 +306,7 @@ export function MatchPage() {
             manager={manager}
             score={state.scores[manager.id] ?? 0}
             rank={ranks[manager.id]}
+            budget={state.budgets[manager.id]}
             statusText={getManagerStatus(manager, state.phase)}
           >
             {manager.role === 'human' && humanManager ? renderHumanContent(manager) : null}

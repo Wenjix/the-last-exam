@@ -18,7 +18,7 @@ import { storeArtifact, getArtifacts } from '../persistence/artifact-store.js';
 import {
   createMatch,
   submitBid,
-  submitEquip,
+  submitStrategy,
   getActiveMatch,
 } from '../orchestrator/match-orchestrator.js';
 import { reconstructReplay } from '../services/replay-service.js';
@@ -43,21 +43,20 @@ async function driveMatchWithArtifacts(seed: string) {
   insertMatchRow(matchId, seed);
 
   for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-    // Phase: briefing -> auto-advances after 10s
-    await vi.advanceTimersByTimeAsync(10_000);
-
-    // Phase: hidden_bid (30s deadline)
-    submitBid(matchId, humanManager.id, round * 15);
-    await vi.advanceTimersByTimeAsync(30_000);
-
-    // Phase: bid_resolve -> auto-advances after 5s
+    // Phase: briefing -> auto-advances after 5s
     await vi.advanceTimersByTimeAsync(5_000);
 
-    // Phase: equip (30s deadline)
-    submitEquip(matchId, humanManager.id, ['tool-a'], ['hazard-b']);
-    await vi.advanceTimersByTimeAsync(30_000);
+    // Phase: bidding (5s deadline)
+    const active = getActiveMatch(matchId)!;
+    const budget = active.budgets[humanManager.id] ?? 0;
+    submitBid(matchId, humanManager.id, Math.min(round * 15, budget));
+    await vi.advanceTimersByTimeAsync(5_000);
 
-    // Phase: run -> mock run completes after 2s
+    // Phase: strategy (10s deadline)
+    submitStrategy(matchId, humanManager.id, `strategy-seed=${seed}-round=${round}`);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Phase: execution -> mock run completes after 2s
     await vi.advanceTimersByTimeAsync(2_000);
 
     // Store deterministic artifacts for every manager in this round
@@ -78,8 +77,8 @@ async function driveMatchWithArtifacts(seed: string) {
       );
     }
 
-    // Phase: resolve -> auto-advances after 15s
-    await vi.advanceTimersByTimeAsync(15_000);
+    // Phase: scoring -> auto-advances after 5s
+    await vi.advanceTimersByTimeAsync(5_000);
   }
 
   // Mark completed in DB
@@ -311,13 +310,13 @@ describe('5li.8: Validate deterministic replay with seeded artifacts', () => {
     const eventCounts = replays.map((r) => r.eventCount);
     expect(new Set(eventCounts).size).toBe(1);
 
-    // All matches must have the same score pattern by rank (deterministic formula)
-    for (let i = 0; i < replays.length - 1; i++) {
-      for (let rank = 0; rank < 4; rank++) {
-        expect(replays[i]!.standings[rank]!.totalScore).toBe(
-          replays[i + 1]!.standings[rank]!.totalScore,
-        );
-      }
+    // With budget bidding, different seeds produce different bid outcomes
+    // and data card bonuses, so exact scores vary across seeds.
+    // Verify structural consistency: each match has 4 standings with valid ranks.
+    for (const replay of replays) {
+      expect(replay.standings).toHaveLength(4);
+      const ranks = replay.standings.map((s) => s.rank);
+      expect(ranks).toEqual([1, 2, 3, 4]);
     }
 
     // But manager IDs must differ between matches (fresh UUIDs each time)
@@ -351,9 +350,9 @@ describe('5li.8: Validate deterministic replay with seeded artifacts', () => {
       await import('../orchestrator/match-orchestrator.js'),
       'submitBid',
     );
-    const submitEquipSpy = vi.spyOn(
+    const submitStrategySpy = vi.spyOn(
       await import('../orchestrator/match-orchestrator.js'),
-      'submitEquip',
+      'submitStrategy',
     );
 
     // Spy on event-store's appendEvent to verify no NEW events are written
@@ -362,7 +361,7 @@ describe('5li.8: Validate deterministic replay with seeded artifacts', () => {
     // Reset call counts after setting up spies
     createMatchSpy.mockClear();
     submitBidSpy.mockClear();
-    submitEquipSpy.mockClear();
+    submitStrategySpy.mockClear();
     appendEventSpy.mockClear();
 
     // --- Perform the replay reconstruction ---
@@ -372,7 +371,7 @@ describe('5li.8: Validate deterministic replay with seeded artifacts', () => {
     // Assert: no orchestrator functions were called during replay
     expect(createMatchSpy).not.toHaveBeenCalled();
     expect(submitBidSpy).not.toHaveBeenCalled();
-    expect(submitEquipSpy).not.toHaveBeenCalled();
+    expect(submitStrategySpy).not.toHaveBeenCalled();
 
     // Assert: no new events were appended during replay
     expect(appendEventSpy).not.toHaveBeenCalled();
@@ -380,7 +379,7 @@ describe('5li.8: Validate deterministic replay with seeded artifacts', () => {
     // Restore spies
     createMatchSpy.mockRestore();
     submitBidSpy.mockRestore();
-    submitEquipSpy.mockRestore();
+    submitStrategySpy.mockRestore();
     appendEventSpy.mockRestore();
   });
 

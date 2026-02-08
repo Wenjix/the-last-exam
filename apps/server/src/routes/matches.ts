@@ -5,7 +5,7 @@ import {
   getActiveMatch,
   getMatchState,
   submitBid,
-  submitEquip,
+  submitStrategy,
 } from '../orchestrator/index.js';
 
 export const matchesRouter = Router();
@@ -15,7 +15,6 @@ matchesRouter.post('/matches', (req, res) => {
   try {
     const { seed, managers } = req.body;
 
-    // Basic validation
     if (!managers || !Array.isArray(managers) || managers.length !== 4) {
       res.status(400).json({
         error: { code: 'VALIDATION_SCHEMA', message: 'Exactly 4 managers required' },
@@ -37,9 +36,7 @@ matchesRouter.post('/matches', (req, res) => {
       role: m.role as 'human' | 'bot',
     }));
 
-    // Create match via orchestrator (starts game loop + WS events)
     const match = createMatch(managerStates, seed);
-
     res.status(201).json(getMatchState(match.id));
   } catch {
     res.status(500).json({
@@ -94,7 +91,7 @@ matchesRouter.post('/matches/:id/bids', (req, res) => {
     res.status(400).json({
       error: {
         code: 'VALIDATION_BID_PHASE_CLOSED',
-        message: 'Bids only accepted during hidden_bid phase',
+        message: 'Bids only accepted during bidding phase or bid exceeds budget',
       },
     });
     return;
@@ -103,8 +100,8 @@ matchesRouter.post('/matches/:id/bids', (req, res) => {
   res.json({ success: true, message: 'Bid accepted', idempotencyKey });
 });
 
-// POST /matches/:id/equips - Submit equip selections
-matchesRouter.post('/matches/:id/equips', (req, res) => {
+// POST /matches/:id/strategy - Submit a strategy prompt
+matchesRouter.post('/matches/:id/strategy', (req, res) => {
   const match = getActiveMatch(req.params.id);
   if (!match) {
     res.status(404).json({
@@ -113,35 +110,25 @@ matchesRouter.post('/matches/:id/equips', (req, res) => {
     return;
   }
 
-  const { managerId, round, toolSelections, hazardAssignments, idempotencyKey } = req.body;
+  const { managerId, round, prompt, idempotencyKey } = req.body;
 
-  if (!managerId || round === undefined) {
+  if (!managerId || round === undefined || !prompt) {
     res.status(400).json({
-      error: { code: 'VALIDATION_SCHEMA', message: 'managerId and round required' },
+      error: { code: 'VALIDATION_SCHEMA', message: 'managerId, round, and prompt required' },
     });
     return;
   }
 
-  const success = submitEquip(
-    req.params.id,
-    managerId,
-    toolSelections || [],
-    hazardAssignments || [],
-  );
+  const success = submitStrategy(req.params.id, managerId, prompt);
   if (!success) {
     res.status(400).json({
       error: {
-        code: 'VALIDATION_EQUIP_PHASE_CLOSED',
-        message: 'Equip only accepted during equip phase',
+        code: 'VALIDATION_STRATEGY_PHASE_CLOSED',
+        message: 'Strategy only accepted during strategy phase',
       },
     });
     return;
   }
 
-  res.json({
-    success: true,
-    equippedTools: toolSelections || [],
-    appliedHazards: hazardAssignments || [],
-    idempotencyKey,
-  });
+  res.json({ success: true, message: 'Strategy accepted', idempotencyKey });
 });

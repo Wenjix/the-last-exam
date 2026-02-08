@@ -1,8 +1,7 @@
 /**
  * Comprehensive deterministic unit tests for @tle/game-core
- * Issue: ao7.12
  *
- * Covers: FSM, Auction, Scoring, Timing, Equip, Standings, and full simulation.
+ * Covers: FSM, Bidding, Scoring, Timing, Standings, and full simulation.
  * All tests are fast (<1s total) and repeatable with fixed seeds.
  */
 
@@ -16,9 +15,9 @@ import {
   PHASES,
   TOTAL_ROUNDS,
   InvalidTransitionError,
-  // Auction
-  resolveAuction,
-  validateBid,
+  // Bidding
+  resolveSealedBid,
+  validateBudgetBid,
   // Scoring
   calculateCorrectness,
   calculateLatencyFactor,
@@ -31,9 +30,6 @@ import {
   remainingMs,
   isDeadlineExpired,
   fullRoundDurationMs,
-  // Equip
-  validateEquipSelection,
-  getDefaultEquipSelection,
   // Standings
   calculateStandings,
   finalizaStandings,
@@ -41,11 +37,9 @@ import {
 
 import type {
   FsmTransitionAction,
-  BidEntry,
+  BudgetBidEntry,
   HarnessResult,
   RoundScore,
-  EquipSelection,
-  AuctionResult,
 } from '../index.js';
 
 // ---------------------------------------------------------------------------
@@ -82,14 +76,12 @@ describe('FSM', () => {
       let state = createInitialState(TEST_SEED);
       const expectedPhases: string[] = [
         'briefing',
-        'hidden_bid',
-        'bid_resolve',
-        'equip',
-        'run',
-        'resolve',
+        'bidding',
+        'strategy',
+        'execution',
+        'scoring',
       ];
 
-      // First state is briefing, already captured
       expect(state.phase).toBe(expectedPhases[0]);
 
       for (let i = 1; i < expectedPhases.length; i++) {
@@ -101,9 +93,9 @@ describe('FSM', () => {
       }
     });
 
-    it('advances from round 1 resolve to round 2 briefing', () => {
+    it('advances from round 1 scoring to round 2 briefing', () => {
       let state = createInitialState(TEST_SEED);
-      // Advance through all 6 phases of round 1
+      // Advance through all 5 phases of round 1
       for (let i = 0; i < PHASES.length; i++) {
         const result = advanceFsm(state, ADVANCE);
         state = result.state;
@@ -122,7 +114,6 @@ describe('FSM', () => {
           state = result.state;
 
           if (round === TOTAL_ROUNDS && phaseIdx === PHASES.length - 1) {
-            // After round 5 resolve -> final_standings
             expect(state.phase).toBe('final_standings');
             expect(state.isTerminal).toBe(true);
           }
@@ -136,12 +127,11 @@ describe('FSM', () => {
       expect(result.transition.fromRound).toBe(1);
       expect(result.transition.fromPhase).toBe('briefing');
       expect(result.transition.toRound).toBe(1);
-      expect(result.transition.toPhase).toBe('hidden_bid');
+      expect(result.transition.toPhase).toBe('bidding');
     });
 
     it('throws InvalidTransitionError on terminal state', () => {
       let state = createInitialState(TEST_SEED);
-      // Advance to terminal state
       while (!state.isTerminal) {
         const result = advanceFsm(state, ADVANCE);
         state = result.state;
@@ -158,7 +148,6 @@ describe('FSM', () => {
       }
       try {
         advanceFsm(state, ADVANCE);
-        // Should not reach here
         expect(true).toBe(false);
       } catch (e) {
         expect(e).toBeInstanceOf(InvalidTransitionError);
@@ -197,8 +186,6 @@ describe('FSM', () => {
     it('different seeds produce different rng sequences', () => {
       const states1 = simulateFullMatch('seed-one');
       const states2 = simulateFullMatch('seed-two');
-      // Phase sequences are identical by design (structural),
-      // but rng states should differ
       expect(states1[0].rngState).not.toBe(states2[0].rngState);
     });
 
@@ -214,10 +201,10 @@ describe('FSM', () => {
   });
 
   describe('simulateFullMatch(seed)', () => {
-    it('returns exactly 31 states (6 phases x 5 rounds + final_standings)', () => {
+    it('returns exactly 26 states (5 phases x 5 rounds + final_standings)', () => {
       const states = simulateFullMatch(TEST_SEED);
-      // 1 initial + 30 transitions = 31 states total
-      expect(states.length).toBe(31);
+      // 1 initial + 25 transitions = 26 states total
+      expect(states.length).toBe(26);
     });
 
     it('first state is round 1 briefing', () => {
@@ -244,11 +231,10 @@ describe('FSM', () => {
         const phaseNames = roundStates.map((s) => s.phase);
         expect(phaseNames).toEqual([
           'briefing',
-          'hidden_bid',
-          'bid_resolve',
-          'equip',
-          'run',
-          'resolve',
+          'bidding',
+          'strategy',
+          'execution',
+          'scoring',
         ]);
       }
     });
@@ -263,24 +249,23 @@ describe('FSM', () => {
 
   describe('isValidTransition()', () => {
     it('accepts valid phase transitions within a round', () => {
-      expect(isValidTransition('briefing', 1, 'hidden_bid', 1)).toBe(true);
-      expect(isValidTransition('hidden_bid', 1, 'bid_resolve', 1)).toBe(true);
-      expect(isValidTransition('bid_resolve', 1, 'equip', 1)).toBe(true);
-      expect(isValidTransition('equip', 1, 'run', 1)).toBe(true);
-      expect(isValidTransition('run', 1, 'resolve', 1)).toBe(true);
+      expect(isValidTransition('briefing', 1, 'bidding', 1)).toBe(true);
+      expect(isValidTransition('bidding', 1, 'strategy', 1)).toBe(true);
+      expect(isValidTransition('strategy', 1, 'execution', 1)).toBe(true);
+      expect(isValidTransition('execution', 1, 'scoring', 1)).toBe(true);
     });
 
     it('accepts valid round boundary transitions', () => {
-      expect(isValidTransition('resolve', 1, 'briefing', 2)).toBe(true);
-      expect(isValidTransition('resolve', 4, 'briefing', 5)).toBe(true);
+      expect(isValidTransition('scoring', 1, 'briefing', 2)).toBe(true);
+      expect(isValidTransition('scoring', 4, 'briefing', 5)).toBe(true);
     });
 
-    it('accepts resolve round 5 to final_standings', () => {
-      expect(isValidTransition('resolve', 5, 'final_standings', 5)).toBe(true);
+    it('accepts scoring round 5 to final_standings', () => {
+      expect(isValidTransition('scoring', 5, 'final_standings', 5)).toBe(true);
     });
 
     it('rejects invalid transitions', () => {
-      expect(isValidTransition('briefing', 1, 'equip', 1)).toBe(false);
+      expect(isValidTransition('briefing', 1, 'execution', 1)).toBe(false);
       expect(isValidTransition('briefing', 1, 'briefing', 2)).toBe(false);
       expect(isValidTransition('final_standings', 5, 'briefing', 6)).toBe(false);
     });
@@ -288,158 +273,120 @@ describe('FSM', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Auction Tests
+// 2. Bidding Tests
 // ---------------------------------------------------------------------------
-describe('Auction', () => {
-  const AUCTION_SEED = 'auction-seed-42';
+describe('Bidding', () => {
+  const BID_SEED = 'bid-seed-42';
 
-  describe('resolveAuction(bids, seed)', () => {
-    it('highest bidder wins first pick', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'a', amount: 10, currentRank: 1 },
-        { managerId: 'b', amount: 50, currentRank: 2 },
-        { managerId: 'c', amount: 30, currentRank: 3 },
+  describe('resolveSealedBid(bids, seed)', () => {
+    it('highest bidder wins', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'a', amount: 10, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'b', amount: 50, currentRank: 2, remainingBudget: 100 },
+        { managerId: 'c', amount: 30, currentRank: 3, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      expect(results[0].managerId).toBe('b');
-      expect(results[0].pickOrder).toBe(1);
-      expect(results[0].amount).toBe(50);
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.winnerId).toBe('b');
+      expect(result.winningBid).toBe(50);
     });
 
-    it('sorts all bidders by bid amount descending', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'a', amount: 10, currentRank: 1 },
-        { managerId: 'b', amount: 50, currentRank: 2 },
-        { managerId: 'c', amount: 30, currentRank: 3 },
+    it('only winner pays', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'a', amount: 10, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'b', amount: 50, currentRank: 2, remainingBudget: 100 },
+        { managerId: 'c', amount: 30, currentRank: 3, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      expect(results.map((r) => r.amount)).toEqual([50, 30, 10]);
-      expect(results.map((r) => r.pickOrder)).toEqual([1, 2, 3]);
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.updatedBudgets['b']).toBe(50); // 100 - 50
+      expect(result.updatedBudgets['a']).toBe(100); // no change
+      expect(result.updatedBudgets['c']).toBe(100); // no change
     });
 
-    it('tie-breaking: lower-ranked manager (higher rank number) wins ties', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'leader', amount: 20, currentRank: 1 },
-        { managerId: 'trailer', amount: 20, currentRank: 3 },
-        { managerId: 'middle', amount: 20, currentRank: 2 },
+    it('tie-breaking: lower-ranked manager (underdog) wins', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'leader', amount: 20, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'trailer', amount: 20, currentRank: 3, remainingBudget: 100 },
+        { managerId: 'middle', amount: 20, currentRank: 2, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      // Lower-ranked (rank 3) should win the tie -> first pick
-      expect(results[0].managerId).toBe('trailer');
-      expect(results[1].managerId).toBe('middle');
-      expect(results[2].managerId).toBe('leader');
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.winnerId).toBe('trailer');
     });
 
-    it('remaining ties broken by seeded RNG (deterministic)', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'x', amount: 20, currentRank: 2 },
-        { managerId: 'y', amount: 20, currentRank: 2 },
+    it('no winner when all bid 0', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'a', amount: 0, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'b', amount: 0, currentRank: 2, remainingBudget: 100 },
       ];
-      const results1 = resolveAuction(bids, AUCTION_SEED);
-      const results2 = resolveAuction(bids, AUCTION_SEED);
-      // Same seed -> same order
-      expect(results1[0].managerId).toBe(results2[0].managerId);
-      expect(results1[1].managerId).toBe(results2[1].managerId);
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.winnerId).toBeNull();
+      expect(result.winningBid).toBe(0);
+      expect(result.updatedBudgets['a']).toBe(100);
+      expect(result.updatedBudgets['b']).toBe(100);
     });
 
-    it('different seeds may produce different RNG tiebreaks', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'x', amount: 20, currentRank: 2 },
-        { managerId: 'y', amount: 20, currentRank: 2 },
+    it('same seed produces same result (deterministic)', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'x', amount: 20, currentRank: 2, remainingBudget: 80 },
+        { managerId: 'y', amount: 20, currentRank: 2, remainingBudget: 80 },
       ];
-      // This is probabilistic but with two different seeds, we just verify
-      // both return valid results with correct structure
-      const r1 = resolveAuction(bids, 'seed-aaa');
-      const r2 = resolveAuction(bids, 'seed-bbb');
-      expect(r1.length).toBe(2);
-      expect(r2.length).toBe(2);
-      expect(r1[0].pickOrder).toBe(1);
-      expect(r1[1].pickOrder).toBe(2);
+      const r1 = resolveSealedBid(bids, BID_SEED);
+      const r2 = resolveSealedBid(bids, BID_SEED);
+      expect(r1.winnerId).toBe(r2.winnerId);
     });
 
-    it('handles single bidder', () => {
-      const bids: BidEntry[] = [{ managerId: 'solo', amount: 100, currentRank: 1 }];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      expect(results.length).toBe(1);
-      expect(results[0].managerId).toBe('solo');
-      expect(results[0].pickOrder).toBe(1);
-    });
-
-    it('handles all same bids with different ranks', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'a', amount: 10, currentRank: 1 },
-        { managerId: 'b', amount: 10, currentRank: 2 },
-        { managerId: 'c', amount: 10, currentRank: 3 },
-        { managerId: 'd', amount: 10, currentRank: 4 },
+    it('single bidder wins', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'solo', amount: 25, currentRank: 1, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      expect(results.length).toBe(4);
-      // Lower-ranked (higher number) should be earlier in pick order
-      expect(results[0].managerId).toBe('d');
-      expect(results[1].managerId).toBe('c');
-      expect(results[2].managerId).toBe('b');
-      expect(results[3].managerId).toBe('a');
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.winnerId).toBe('solo');
+      expect(result.updatedBudgets['solo']).toBe(75);
     });
 
-    it('handles all different bids', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'a', amount: 5, currentRank: 1 },
-        { managerId: 'b', amount: 25, currentRank: 2 },
-        { managerId: 'c', amount: 15, currentRank: 3 },
+    it('budget fully depleted after all-in bid', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'allin', amount: 100, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'low', amount: 5, currentRank: 2, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      expect(results[0].managerId).toBe('b');
-      expect(results[1].managerId).toBe('c');
-      expect(results[2].managerId).toBe('a');
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.winnerId).toBe('allin');
+      expect(result.updatedBudgets['allin']).toBe(0);
     });
 
-    it('handles partial ties (some tied, some not)', () => {
-      const bids: BidEntry[] = [
-        { managerId: 'a', amount: 30, currentRank: 1 },
-        { managerId: 'b', amount: 30, currentRank: 3 },
-        { managerId: 'c', amount: 10, currentRank: 2 },
+    it('allBids contains all bids', () => {
+      const bids: BudgetBidEntry[] = [
+        { managerId: 'a', amount: 10, currentRank: 1, remainingBudget: 100 },
+        { managerId: 'b', amount: 50, currentRank: 2, remainingBudget: 100 },
       ];
-      const results = resolveAuction(bids, AUCTION_SEED);
-      // b (rank 3) beats a (rank 1) on tie, c is last (lowest bid)
-      expect(results[0].managerId).toBe('b');
-      expect(results[1].managerId).toBe('a');
-      expect(results[2].managerId).toBe('c');
-    });
-
-    it('returns empty array for empty bids', () => {
-      const results = resolveAuction([], AUCTION_SEED);
-      expect(results).toEqual([]);
+      const result = resolveSealedBid(bids, BID_SEED);
+      expect(result.allBids.length).toBe(2);
+      expect(result.allBids.find(b => b.managerId === 'a')?.amount).toBe(10);
+      expect(result.allBids.find(b => b.managerId === 'b')?.amount).toBe(50);
     });
   });
 
-  describe('validateBid()', () => {
-    it('accepts valid bid within default range', () => {
-      expect(validateBid(10)).toBeNull();
-      expect(validateBid(0)).toBeNull();
-    });
-
-    it('accepts valid bid within custom range', () => {
-      expect(validateBid(5, 1, 100)).toBeNull();
-      expect(validateBid(1, 1, 100)).toBeNull();
-      expect(validateBid(100, 1, 100)).toBeNull();
+  describe('validateBudgetBid()', () => {
+    it('accepts valid bid within budget', () => {
+      expect(validateBudgetBid(10, 100)).toBeNull();
+      expect(validateBudgetBid(0, 100)).toBeNull();
+      expect(validateBudgetBid(100, 100)).toBeNull();
     });
 
     it('rejects non-integer bid', () => {
-      expect(validateBid(10.5)).toBe('Bid must be an integer');
-      expect(validateBid(0.1)).toBe('Bid must be an integer');
+      expect(validateBudgetBid(10.5, 100)).toBe('Bid must be an integer');
     });
 
-    it('rejects bid below minimum', () => {
-      expect(validateBid(0, 1, 100)).toBe('Bid must be at least 1');
-      expect(validateBid(-1, 0)).toContain('at least');
+    it('rejects negative bid', () => {
+      expect(validateBudgetBid(-1, 100)).toBe('Bid must be non-negative');
     });
 
-    it('rejects bid above maximum', () => {
-      expect(validateBid(101, 0, 100)).toBe('Bid must be at most 100');
+    it('rejects bid exceeding budget', () => {
+      const result = validateBudgetBid(101, 100);
+      expect(result).toContain('exceeds remaining budget');
     });
 
     it('rejects NaN', () => {
-      expect(validateBid(NaN)).toBe('Bid must be an integer');
+      expect(validateBudgetBid(NaN, 100)).toBe('Bid must be an integer');
     });
   });
 });
@@ -575,7 +522,6 @@ describe('Scoring', () => {
       expect(result.baseScore).toBe(SCORING_CONFIG.MAX_BASE_SCORE);
       expect(result.latencyFactor).toBe(1);
       expect(result.resourceFactor).toBe(1);
-      // Weighted: 1000 * (0.7 + 0.2*1 + 0.1*1) = 1000
       expect(result.totalScore).toBe(1000);
     });
 
@@ -583,11 +529,10 @@ describe('Scoring', () => {
       const harness: HarnessResult = {
         totalTests: 10,
         passedTests: 10,
-        durationMs: SCORING_CONFIG.LATENCY_BASELINE_MS, // latencyFactor = 0
-        memoryUsedBytes: SCORING_CONFIG.MEMORY_BASELINE_BYTES, // resourceFactor = 0
+        durationMs: SCORING_CONFIG.LATENCY_BASELINE_MS,
+        memoryUsedBytes: SCORING_CONFIG.MEMORY_BASELINE_BYTES,
       };
       const result = calculateScore(harness);
-      // Weighted: 1000 * (0.7 + 0.2*0 + 0.1*0) = 700
       expect(result.totalScore).toBe(700);
     });
 
@@ -599,9 +544,7 @@ describe('Scoring', () => {
         memoryUsedBytes: 0,
       };
       const result = calculateScore(harness, { rawScore: 1.0 });
-      // LLM bonus: 1.0 * 0.1 * 1000 = 100
       expect(result.llmBonus).toBe(100);
-      // Total: 1000 + 100 = 1100
       expect(result.totalScore).toBe(1100);
     });
 
@@ -623,9 +566,8 @@ describe('Scoring', () => {
         durationMs: 0,
         memoryUsedBytes: 0,
       };
-      // rawScore > 1 should be clamped to 1
       const result = calculateScore(harness, { rawScore: 5.0 });
-      expect(result.llmBonus).toBe(100); // max is 0.1 * 1000
+      expect(result.llmBonus).toBe(100);
     });
 
     it('LLM rawScore < 0 is clamped to 0', () => {
@@ -649,7 +591,6 @@ describe('Scoring', () => {
       const result = calculateScore(harness);
       expect(result.correctness).toBe(0.5);
       expect(result.baseScore).toBe(500);
-      // Weighted: 500 * (0.7 + 0.2*1 + 0.1*1) = 500
       expect(result.totalScore).toBe(500);
     });
 
@@ -673,7 +614,6 @@ describe('Scoring', () => {
         memoryUsedBytes: 100_000_000,
       };
       const result = calculateScore(harness);
-      // Verify rounding by checking decimal places
       const scoreStr = result.totalScore.toString();
       const parts = scoreStr.split('.');
       if (parts.length > 1) {
@@ -688,28 +628,24 @@ describe('Scoring', () => {
 // ---------------------------------------------------------------------------
 describe('Timing', () => {
   describe('PHASE_DURATIONS_MS', () => {
-    it('briefing is 10s', () => {
-      expect(PHASE_DURATIONS_MS.briefing).toBe(10_000);
+    it('briefing is 5s', () => {
+      expect(PHASE_DURATIONS_MS.briefing).toBe(5_000);
     });
 
-    it('hidden_bid is 30s', () => {
-      expect(PHASE_DURATIONS_MS.hidden_bid).toBe(30_000);
+    it('bidding is 5s', () => {
+      expect(PHASE_DURATIONS_MS.bidding).toBe(5_000);
     });
 
-    it('bid_resolve is 5s', () => {
-      expect(PHASE_DURATIONS_MS.bid_resolve).toBe(5_000);
+    it('strategy is 10s', () => {
+      expect(PHASE_DURATIONS_MS.strategy).toBe(10_000);
     });
 
-    it('equip is 30s', () => {
-      expect(PHASE_DURATIONS_MS.equip).toBe(30_000);
+    it('execution is 30s', () => {
+      expect(PHASE_DURATIONS_MS.execution).toBe(30_000);
     });
 
-    it('run is 60s', () => {
-      expect(PHASE_DURATIONS_MS.run).toBe(60_000);
-    });
-
-    it('resolve is 15s', () => {
-      expect(PHASE_DURATIONS_MS.resolve).toBe(15_000);
+    it('scoring is 5s', () => {
+      expect(PHASE_DURATIONS_MS.scoring).toBe(5_000);
     });
 
     it('final_standings is 0 (instant)', () => {
@@ -722,14 +658,14 @@ describe('Timing', () => {
       const start = new Date('2025-01-01T00:00:00Z');
       const deadline = calculateDeadline('briefing', start);
       expect(deadline).not.toBeNull();
-      expect(deadline!.getTime()).toBe(start.getTime() + 10_000);
+      expect(deadline!.getTime()).toBe(start.getTime() + 5_000);
     });
 
-    it('produces correct future timestamp for run phase', () => {
+    it('produces correct future timestamp for execution phase', () => {
       const start = new Date('2025-01-01T00:00:00Z');
-      const deadline = calculateDeadline('run', start);
+      const deadline = calculateDeadline('execution', start);
       expect(deadline).not.toBeNull();
-      expect(deadline!.getTime()).toBe(start.getTime() + 60_000);
+      expect(deadline!.getTime()).toBe(start.getTime() + 30_000);
     });
 
     it('returns null for final_standings (0 duration)', () => {
@@ -787,188 +723,16 @@ describe('Timing', () => {
   });
 
   describe('fullRoundDurationMs()', () => {
-    it('returns sum of all phase durations', () => {
-      const expected = 10_000 + 30_000 + 5_000 + 30_000 + 60_000 + 15_000;
+    it('returns sum of all phase durations (55s)', () => {
+      const expected = 5_000 + 5_000 + 10_000 + 30_000 + 5_000;
       expect(fullRoundDurationMs()).toBe(expected);
-      expect(fullRoundDurationMs()).toBe(150_000); // 150 seconds
+      expect(fullRoundDurationMs()).toBe(55_000);
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// 5. Equip Validation Tests
-// ---------------------------------------------------------------------------
-describe('Equip', () => {
-  const auctionResults: AuctionResult[] = [
-    { managerId: 'm1', amount: 50, pickOrder: 1 },
-    { managerId: 'm2', amount: 30, pickOrder: 2 },
-  ];
-  const availableTools = ['tool-a', 'tool-b', 'tool-c', 'tool-d'];
-  const availableHazards = ['hazard-x', 'hazard-y'];
-
-  describe('validateEquipSelection()', () => {
-    it('accepts valid equip selection', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'tool-b'],
-        hazardIds: ['hazard-x'],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(true);
-      expect(result.errors).toEqual([]);
-    });
-
-    it('accepts empty tool and hazard selection', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: [],
-        hazardIds: [],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(true);
-      expect(result.errors).toEqual([]);
-    });
-
-    it('rejects manager who did not participate in auction', () => {
-      const selection: EquipSelection = {
-        managerId: 'unknown',
-        toolIds: ['tool-a'],
-        hazardIds: [],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.length).toBe(1);
-      expect(result.errors[0]).toContain('did not participate');
-    });
-
-    it('rejects invalid tool IDs', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'nonexistent-tool'],
-        hazardIds: [],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("'nonexistent-tool'"))).toBe(true);
-    });
-
-    it('rejects duplicate tools', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'tool-a'],
-        hazardIds: [],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('Duplicate'))).toBe(true);
-    });
-
-    it('rejects too many tools exceeding max per round', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'tool-b', 'tool-c', 'tool-d'],
-        hazardIds: [],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-        3, // max 3 tools
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('Too many tools'))).toBe(true);
-    });
-
-    it('rejects invalid hazard IDs', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: [],
-        hazardIds: ['hazard-x', 'unknown-hazard'],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes("'unknown-hazard'"))).toBe(true);
-    });
-
-    it('accumulates multiple errors', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'tool-a', 'bad-tool'],
-        hazardIds: ['bad-hazard'],
-      };
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-      );
-      expect(result.valid).toBe(false);
-      // Should have errors for: invalid tool, duplicate tools, invalid hazard
-      expect(result.errors.length).toBeGreaterThanOrEqual(3);
-    });
-
-    it('respects custom maxToolsPerRound', () => {
-      const selection: EquipSelection = {
-        managerId: 'm1',
-        toolIds: ['tool-a', 'tool-b'],
-        hazardIds: [],
-      };
-      // With max 1, selecting 2 should fail
-      const result = validateEquipSelection(
-        selection,
-        auctionResults,
-        availableTools,
-        availableHazards,
-        1,
-      );
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes('Too many tools'))).toBe(true);
-    });
-  });
-
-  describe('getDefaultEquipSelection()', () => {
-    it('returns empty selection for given managerId', () => {
-      const selection = getDefaultEquipSelection('mgr-42');
-      expect(selection.managerId).toBe('mgr-42');
-      expect(selection.toolIds).toEqual([]);
-      expect(selection.hazardIds).toEqual([]);
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. Standings Tests
+// 5. Standings Tests
 // ---------------------------------------------------------------------------
 describe('Standings', () => {
   const STANDINGS_SEED = 'standings-seed-99';
@@ -1003,15 +767,12 @@ describe('Standings', () => {
       const standings = calculateStandings(managerIds, scores, 2, STANDINGS_SEED);
       expect(standings.length).toBe(3);
 
-      // Alice: 100 + 300 = 400
       const alice = standings.find((s) => s.managerId === 'alice')!;
       expect(alice.totalScore).toBe(400);
 
-      // Bob: 200 + 100 = 300
       const bob = standings.find((s) => s.managerId === 'bob')!;
       expect(bob.totalScore).toBe(300);
 
-      // Charlie: 150 + 100 = 250
       const charlie = standings.find((s) => s.managerId === 'charlie')!;
       expect(charlie.totalScore).toBe(250);
     });
@@ -1045,7 +806,6 @@ describe('Standings', () => {
 
     it('tie-breaking by latest round score (higher wins)', () => {
       const scores: RoundScore[] = [
-        // Both tied at 300 total
         makeRoundScore('alice', 1, 200),
         makeRoundScore('alice', 2, 100),
         makeRoundScore('bob', 1, 100),
@@ -1055,8 +815,6 @@ describe('Standings', () => {
       ];
 
       const standings = calculateStandings(managerIds, scores, 2, STANDINGS_SEED);
-      // Alice and Bob both have 300 total
-      // Bob scored 200 in round 2 vs Alice 100, so Bob wins tiebreak
       const topTwo = standings.filter((s) => s.totalScore === 300);
       expect(topTwo[0].managerId).toBe('bob');
       expect(topTwo[1].managerId).toBe('alice');
@@ -1121,9 +879,9 @@ describe('Standings', () => {
       const standings = finalizaStandings(['alice', 'bob'], scores, STANDINGS_SEED);
       expect(standings.length).toBe(2);
       expect(standings[0].managerId).toBe('bob');
-      expect(standings[0].totalScore).toBe(1000); // 200 * 5
+      expect(standings[0].totalScore).toBe(1000);
       expect(standings[1].managerId).toBe('alice');
-      expect(standings[1].totalScore).toBe(500); // 100 * 5
+      expect(standings[1].totalScore).toBe(500);
     });
 
     it('produces roundScores of length 5', () => {
@@ -1140,14 +898,14 @@ describe('Standings', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. Full 5-Round Simulation Integration Test
+// 6. Full 5-Round Simulation Integration Test
 // ---------------------------------------------------------------------------
 describe('Full 5-round simulation (integration)', () => {
   const SIMULATION_SEED = 'integration-test-seed-777';
 
-  it('simulateFullMatch produces exactly 31 states', () => {
+  it('simulateFullMatch produces exactly 26 states', () => {
     const states = simulateFullMatch(SIMULATION_SEED);
-    expect(states.length).toBe(31);
+    expect(states.length).toBe(26);
   });
 
   it('final state is terminal', () => {
@@ -1193,7 +951,7 @@ describe('Full 5-round simulation (integration)', () => {
     // Last state should be final_standings
     expect(states[stateIndex].phase).toBe('final_standings');
     expect(states[stateIndex].round).toBe(5);
-    expect(stateIndex).toBe(30);
+    expect(stateIndex).toBe(25);
   });
 
   it('all states preserve the seed', () => {
@@ -1206,7 +964,6 @@ describe('Full 5-round simulation (integration)', () => {
   it('rngState changes with each transition', () => {
     const states = simulateFullMatch(SIMULATION_SEED);
     const rngStates = states.map((s) => s.rngState);
-    // All rngStates should be unique (each transition advances RNG)
     const uniqueRngStates = new Set(rngStates);
     expect(uniqueRngStates.size).toBe(rngStates.length);
   });

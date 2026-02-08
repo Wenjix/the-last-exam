@@ -13,7 +13,7 @@ export function RunPhase({ round, remainingMs, agentStatuses }: RunPhaseProps) {
       <div style={{ padding: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
           <span className="pill green">round {round}</span>
-          <span className="pill green">running</span>
+          <span className="pill green">execution</span>
           {remainingMs !== undefined && (
             <span className="pill" style={{ color: 'var(--text-secondary)' }}>
               {Math.ceil(remainingMs / 1000)}s
@@ -22,7 +22,7 @@ export function RunPhase({ round, remainingMs, agentStatuses }: RunPhaseProps) {
           <LoadingDots />
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
-          agents are working on the challenge...
+          all four agents are solving the challenge simultaneously...
         </p>
         {agentStatuses && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

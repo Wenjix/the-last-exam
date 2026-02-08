@@ -9,11 +9,10 @@ interface HeaderProps {
 
 const PHASE_LABELS: Record<MatchPhase, { label: string; color: string }> = {
   briefing: { label: 'briefing', color: 'cyan' },
-  hidden_bid: { label: 'bidding', color: 'pink' },
-  bid_resolve: { label: 'bid results', color: 'pink' },
-  equip: { label: 'equip', color: 'orange' },
-  run: { label: 'running', color: 'green' },
-  resolve: { label: 'results', color: 'orange' },
+  bidding: { label: 'bidding', color: 'pink' },
+  strategy: { label: 'strategy', color: 'orange' },
+  execution: { label: 'execution', color: 'green' },
+  scoring: { label: 'scoring', color: 'orange' },
   final_standings: { label: 'final', color: 'purple' },
 };
 

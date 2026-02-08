@@ -4,11 +4,11 @@ interface BriefingPhaseProps {
   round: number;
   challengeTitle?: string;
   challengeDescription?: string;
-  hazardName?: string;
-  hazardDescription?: string;
+  dataCardTitle?: string;
+  dataCardDescription?: string;
 }
 
-export function BriefingPhase({ round, challengeTitle, challengeDescription, hazardName, hazardDescription }: BriefingPhaseProps) {
+export function BriefingPhase({ round, challengeTitle, challengeDescription, dataCardTitle, dataCardDescription }: BriefingPhaseProps) {
   return (
     <GlassCard>
       <div style={{ padding: '1rem' }}>
@@ -22,13 +22,13 @@ export function BriefingPhase({ round, challengeTitle, challengeDescription, haz
         <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           {challengeDescription || 'challenge details will appear here.'}
         </p>
-        {hazardName && (
-          <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', borderLeft: '2px solid var(--accent-pink)' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--accent-pink)', fontWeight: 200, marginBottom: '4px' }}>
-              hazard: {hazardName}
+        {dataCardTitle && (
+          <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', borderLeft: '2px solid var(--accent-purple, #a78bfa)' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--accent-purple, #a78bfa)', fontWeight: 200, marginBottom: '4px' }}>
+              data card: {dataCardTitle}
             </div>
             <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              {hazardDescription}
+              {dataCardDescription}
             </p>
           </div>
         )}

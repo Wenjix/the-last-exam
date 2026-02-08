@@ -1,13 +1,12 @@
 import type { MatchPhase } from '../fsm/types.js';
 
-/** Phase duration constants in milliseconds (from Architecture Decision #4) */
+/** Phase duration constants in milliseconds */
 export const PHASE_DURATIONS_MS: Record<string, number> = {
-  briefing: 10_000,
-  hidden_bid: 30_000,
-  bid_resolve: 5_000,
-  equip: 30_000,
-  run: 60_000,
-  resolve: 15_000,
+  briefing: 5_000,
+  bidding: 5_000,
+  strategy: 10_000,
+  execution: 30_000,
+  scoring: 5_000,
   final_standings: 0,
 };
 
@@ -34,10 +33,9 @@ export function isDeadlineExpired(deadline: Date | null, now: Date = new Date())
 export function fullRoundDurationMs(): number {
   return (
     PHASE_DURATIONS_MS.briefing +
-    PHASE_DURATIONS_MS.hidden_bid +
-    PHASE_DURATIONS_MS.bid_resolve +
-    PHASE_DURATIONS_MS.equip +
-    PHASE_DURATIONS_MS.run +
-    PHASE_DURATIONS_MS.resolve
+    PHASE_DURATIONS_MS.bidding +
+    PHASE_DURATIONS_MS.strategy +
+    PHASE_DURATIONS_MS.execution +
+    PHASE_DURATIONS_MS.scoring
   );
 }

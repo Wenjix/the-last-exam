@@ -51,12 +51,12 @@ function englishFallback(event: MultilingualCommentaryEvent): string {
       switch (toPhase) {
         case 'briefing':
           return `Round ${round} begins! Let's see what challenge awaits our competitors.`;
-        case 'bid_resolve':
-          return `Round ${round} bid reveal! The top bidder takes the lead.`;
-        case 'equip':
-          return `Round ${round} equipment phase. Managers are selecting their tools.`;
-        case 'run':
-          return `Round ${round} run phase! Agents are coding furiously.`;
+        case 'bidding':
+          return `Round ${round} bidding! Champions weigh their budgets for the data card.`;
+        case 'strategy':
+          return `Round ${round} strategy phase. Agents receive their instructions.`;
+        case 'execution':
+          return `Round ${round} execution! Agents are coding furiously.`;
         default:
           return `Round ${round} continues with a new phase.`;
       }

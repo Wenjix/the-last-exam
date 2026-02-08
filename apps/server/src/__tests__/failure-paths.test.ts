@@ -3,7 +3,7 @@
  *
  * Verifies that the system degrades gracefully when:
  *   1. Agent (human) does not submit a bid before the deadline
- *   2. Agent (human) does not submit equip before the deadline
+ *   2. Agent (human) does not submit strategy before the deadline
  *   3. Runner sandbox times out (fallback result produced)
  *   4. Commentary times out (circuit breaker opens, game not blocked)
  *
@@ -15,7 +15,7 @@ import {
   createMatch,
   getActiveMatch,
   submitBid,
-  submitEquip,
+  submitStrategy,
 } from '../orchestrator/match-orchestrator.js';
 import { buildManagers, insertMatchRow } from './helpers.js';
 import { RunnerResultSchema } from '@tle/contracts';
@@ -56,22 +56,22 @@ describe('28y.5: Failure-path integration tests', () => {
       const matchId = match.id;
       insertMatchRow(matchId, 'failure-bid-timeout');
 
-      // Phase: briefing (10s)
+      // Phase: briefing (5s)
       expect(match.phase).toBe('briefing');
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      // Phase: hidden_bid (30s deadline)
-      expect(match.phase).toBe('hidden_bid');
+      // Phase: bidding (5s deadline)
+      expect(match.phase).toBe('bidding');
 
       // Do NOT submit a bid for the human player.
       // Advance past bot auto-submit (500ms) and then the full deadline.
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      // Match should have advanced past hidden_bid without crashing.
+      // Match should have advanced past bidding without crashing.
       const active = getActiveMatch(matchId)!;
       expect(active).toBeDefined();
       expect(active.status).toBe('active');
-      expect(active.phase).toBe('bid_resolve');
+      expect(active.phase).toBe('strategy');
 
       // Bots should have auto-submitted bids.
       const bots = managers.filter((m) => m.role === 'bot');
@@ -92,22 +92,21 @@ describe('28y.5: Failure-path integration tests', () => {
 
       const human = managers[0]!;
 
-      // briefing -> hidden_bid -> bid_resolve -> equip -> run -> resolve
-      await vi.advanceTimersByTimeAsync(10_000); // briefing
+      // briefing -> bidding -> strategy -> execution -> scoring
+      await vi.advanceTimersByTimeAsync(5_000); // briefing
       // Skip human bid
-      await vi.advanceTimersByTimeAsync(30_000); // hidden_bid deadline
-      await vi.advanceTimersByTimeAsync(5_000); // bid_resolve
+      await vi.advanceTimersByTimeAsync(5_000); // bidding deadline
 
-      // Phase: equip -- submit equip to isolate the bid failure
-      expect(getActiveMatch(matchId)!.phase).toBe('equip');
-      submitEquip(matchId, human.id, ['tool-a'], []);
-      await vi.advanceTimersByTimeAsync(30_000); // equip deadline
+      // Phase: strategy -- submit strategy to isolate the bid failure
+      expect(getActiveMatch(matchId)!.phase).toBe('strategy');
+      submitStrategy(matchId, human.id, 'Test strategy');
+      await vi.advanceTimersByTimeAsync(10_000); // strategy deadline
 
-      // run phase (2s mock)
+      // execution phase (2s mock)
       await vi.advanceTimersByTimeAsync(2_000);
 
-      // resolve phase (15s)
-      await vi.advanceTimersByTimeAsync(15_000);
+      // scoring phase (5s)
+      await vi.advanceTimersByTimeAsync(5_000);
 
       // Should now be in round 2
       const active = getActiveMatch(matchId)!;
@@ -124,65 +123,61 @@ describe('28y.5: Failure-path integration tests', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Test 2: Agent doesn't submit equip before deadline
+  // Test 2: Agent doesn't submit strategy before deadline
   // -----------------------------------------------------------------------
 
-  describe('Test 2: Agent does not submit equip before deadline', () => {
-    it('match continues when human misses equip deadline', async () => {
+  describe('Test 2: Agent does not submit strategy before deadline', () => {
+    it('match continues when human misses strategy deadline', async () => {
       const managers = buildManagers();
       const human = managers[0]!;
-      const match = createMatch(managers, 'failure-equip-timeout');
+      const match = createMatch(managers, 'failure-strategy-timeout');
       const matchId = match.id;
-      insertMatchRow(matchId, 'failure-equip-timeout');
+      insertMatchRow(matchId, 'failure-strategy-timeout');
 
       // briefing
-      await vi.advanceTimersByTimeAsync(10_000);
-
-      // hidden_bid -- submit human bid normally
-      expect(getActiveMatch(matchId)!.phase).toBe('hidden_bid');
-      submitBid(matchId, human.id, 50);
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      // bid_resolve
       await vi.advanceTimersByTimeAsync(5_000);
 
-      // equip -- do NOT submit human equip
-      expect(getActiveMatch(matchId)!.phase).toBe('equip');
-      await vi.advanceTimersByTimeAsync(30_000);
+      // bidding -- submit human bid normally
+      expect(getActiveMatch(matchId)!.phase).toBe('bidding');
+      submitBid(matchId, human.id, 50);
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      // Match should have advanced past equip without crashing.
+      // strategy -- do NOT submit human strategy
+      expect(getActiveMatch(matchId)!.phase).toBe('strategy');
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      // Match should have advanced past strategy without crashing.
       const active = getActiveMatch(matchId)!;
       expect(active).toBeDefined();
       expect(active.status).toBe('active');
-      expect(active.phase).toBe('run');
+      expect(active.phase).toBe('execution');
 
-      // Bots should have auto-submitted equips (empty arrays).
+      // Bots should have auto-submitted strategies.
       const bots = managers.filter((m) => m.role === 'bot');
       for (const bot of bots) {
-        expect(active.equips.has(bot.id)).toBe(true);
+        expect(active.strategies.has(bot.id)).toBe(true);
       }
 
-      // Human equip is absent (no default for humans).
-      expect(active.equips.has(human.id)).toBe(false);
+      // Human strategy is absent (no default for humans).
+      expect(active.strategies.has(human.id)).toBe(false);
     });
 
-    it('match can complete a full round even when human never equips', async () => {
+    it('match can complete a full round even when human never submits strategy', async () => {
       const managers = buildManagers();
       const human = managers[0]!;
-      const match = createMatch(managers, 'failure-equip-full-round');
+      const match = createMatch(managers, 'failure-strategy-full-round');
       const matchId = match.id;
-      insertMatchRow(matchId, 'failure-equip-full-round');
+      insertMatchRow(matchId, 'failure-strategy-full-round');
 
       // Round 1
-      await vi.advanceTimersByTimeAsync(10_000); // briefing
+      await vi.advanceTimersByTimeAsync(5_000); // briefing
       submitBid(matchId, human.id, 50);
-      await vi.advanceTimersByTimeAsync(30_000); // hidden_bid
-      await vi.advanceTimersByTimeAsync(5_000); // bid_resolve
+      await vi.advanceTimersByTimeAsync(5_000); // bidding
 
-      // Skip human equip entirely
-      await vi.advanceTimersByTimeAsync(30_000); // equip deadline
-      await vi.advanceTimersByTimeAsync(2_000); // run
-      await vi.advanceTimersByTimeAsync(15_000); // resolve
+      // Skip human strategy entirely
+      await vi.advanceTimersByTimeAsync(10_000); // strategy deadline
+      await vi.advanceTimersByTimeAsync(2_000); // execution
+      await vi.advanceTimersByTimeAsync(5_000); // scoring
 
       // Should now be in round 2
       const active = getActiveMatch(matchId)!;
@@ -398,7 +393,7 @@ describe('28y.5: Failure-path integration tests', () => {
         circuitBreaker: {
           timeoutMs: 50,
           failureThreshold: 2,
-          // Cooldown longer than total simulated time (300s) so circuit
+          // Cooldown longer than total simulated time so circuit
           // stays open for the entire test.
           cooldownMs: 999_999,
         },
@@ -423,8 +418,8 @@ describe('28y.5: Failure-path integration tests', () => {
       // Simulate a full match's phase events while circuit is open.
       // Each processEvent call must return synchronously (void, not a Promise).
       const matchId = 'match-cb-open';
-      const phases = ['briefing', 'hidden_bid', 'bid_resolve', 'equip', 'run', 'resolve'] as const;
-      const durations = [10_000, 30_000, 5_000, 30_000, 60_000, 15_000] as const;
+      const phases = ['briefing', 'bidding', 'strategy', 'execution', 'scoring'] as const;
+      const durations = [5_000, 5_000, 10_000, 2_000, 5_000] as const;
 
       let totalElapsed = 0;
 
@@ -448,8 +443,8 @@ describe('28y.5: Failure-path integration tests', () => {
         }
       }
 
-      // Total time for 2 rounds: 2 * (10k + 30k + 5k + 30k + 60k + 15k) = 300,000ms
-      expect(totalElapsed).toBe(300_000);
+      // Total time for 2 rounds: 2 * (5k + 5k + 10k + 2k + 5k) = 54,000ms
+      expect(totalElapsed).toBe(54_000);
 
       // No commentary should have been delivered (circuit was open the entire time)
       expect(outputs.length).toBe(0);
@@ -492,54 +487,45 @@ describe('28y.5: Failure-path integration tests', () => {
           round,
           toPhase: 'briefing',
         } as CommentaryEvent);
-        await vi.advanceTimersByTimeAsync(10_000);
+        await vi.advanceTimersByTimeAsync(5_000);
 
-        // hidden_bid
+        // bidding
         submitBid(matchId, human.id, round * 10);
         gen.processEvent({
           type: 'phase_transition',
           matchId,
           round,
-          toPhase: 'hidden_bid',
-        } as CommentaryEvent);
-        await vi.advanceTimersByTimeAsync(30_000);
-
-        // bid_resolve
-        gen.processEvent({
-          type: 'phase_transition',
-          matchId,
-          round,
-          toPhase: 'bid_resolve',
+          toPhase: 'bidding',
         } as CommentaryEvent);
         await vi.advanceTimersByTimeAsync(5_000);
 
-        // equip
-        submitEquip(matchId, human.id, ['tool-a'], ['hazard-b']);
+        // strategy
+        submitStrategy(matchId, human.id, 'Test strategy');
         gen.processEvent({
           type: 'phase_transition',
           matchId,
           round,
-          toPhase: 'equip',
+          toPhase: 'strategy',
         } as CommentaryEvent);
-        await vi.advanceTimersByTimeAsync(30_000);
+        await vi.advanceTimersByTimeAsync(10_000);
 
-        // run
+        // execution
         gen.processEvent({
           type: 'phase_transition',
           matchId,
           round,
-          toPhase: 'run',
+          toPhase: 'execution',
         } as CommentaryEvent);
         await vi.advanceTimersByTimeAsync(2_000);
 
-        // resolve
+        // scoring
         gen.processEvent({
           type: 'phase_transition',
           matchId,
           round,
-          toPhase: 'resolve',
+          toPhase: 'scoring',
         } as CommentaryEvent);
-        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(5_000);
       }
 
       // Match should have completed successfully

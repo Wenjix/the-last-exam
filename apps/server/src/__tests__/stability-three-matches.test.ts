@@ -7,7 +7,7 @@
  *   - All matches produce valid final standings
  *   - Commentary pipeline does not block progression
  *   - Replays work for all matches
- *   - Mistral bot participates in at least one match
+ *   - Cult of S.A.M. bot participates in at least one match
  *   - Non-English commentary generates for at least one match
  *
  * AC: Three matches complete; zero critical failures; all replays valid.
@@ -19,12 +19,12 @@ import {
   createMatch,
   getActiveMatch,
   submitBid,
-  submitEquip,
+  submitStrategy,
 } from '../orchestrator/match-orchestrator.js';
 import { reconstructReplay } from '../services/replay-service.js';
 import { buildManagers, insertMatchRow, TOTAL_ROUNDS } from './helpers.js';
 import { DEFAULT_BOT_CONFIGS } from '@tle/ai';
-import { getRoundAssignments, validateRoundBalance } from '@tle/content';
+import { getRoundAssignments } from '@tle/content';
 import {
   CommentaryCircuitBreaker,
   CircuitState,
@@ -91,7 +91,7 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
     gen.onCommentary((output: CommentaryOutput) => commentaryOutputs.push(output));
 
     for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-      // briefing
+      // briefing (5s)
       gen.processEvent({
         type: 'phase_transition',
         matchId,
@@ -102,55 +102,46 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
         { type: 'phase_transition', round, toPhase: 'briefing' },
         commentaryLanguage,
       );
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      // hidden_bid
+      // bidding (5s)
       submitBid(matchId, human.id, round * 15);
       gen.processEvent({
         type: 'phase_transition',
         matchId,
         round,
-        toPhase: 'hidden_bid',
-      } as CommentaryEvent);
-      await vi.advanceTimersByTimeAsync(30_000);
-
-      // bid_resolve
-      gen.processEvent({
-        type: 'phase_transition',
-        matchId,
-        round,
-        toPhase: 'bid_resolve',
+        toPhase: 'bidding',
       } as CommentaryEvent);
       await vi.advanceTimersByTimeAsync(5_000);
 
-      // equip
-      submitEquip(matchId, human.id, ['tool-a'], ['hazard-b']);
+      // strategy (10s)
+      submitStrategy(matchId, human.id, `Round ${round} strategy`);
       gen.processEvent({
         type: 'phase_transition',
         matchId,
         round,
-        toPhase: 'equip',
+        toPhase: 'strategy',
       } as CommentaryEvent);
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(10_000);
 
-      // run
+      // execution (2s)
       gen.processEvent({
         type: 'phase_transition',
         matchId,
         round,
-        toPhase: 'run',
+        toPhase: 'execution',
       } as CommentaryEvent);
       await vi.advanceTimersByTimeAsync(2_000);
 
-      // resolve
+      // scoring (5s)
       gen.processEvent({
         type: 'phase_transition',
         matchId,
         round,
-        toPhase: 'resolve',
+        toPhase: 'scoring',
       } as CommentaryEvent);
       await generateMultilingualCommentary({ type: 'round_result', round }, commentaryLanguage);
-      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     }
 
     insertMatchRow(matchId, seed, 'completed');
@@ -226,7 +217,7 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
       'stability-match-3-multilingual',
     ];
 
-    // Languages: en, en (Mistral focus), fr (multilingual)
+    // Languages: en, en (bot focus), fr (multilingual)
     const languages: CommentaryLanguage[] = ['en', 'en', 'fr'];
 
     const results: MatchRun[] = [];
@@ -245,14 +236,15 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
     expect(results).toHaveLength(3);
   });
 
-  it('Mistral bot config verified in at least one match', async () => {
-    // Verify the Mistral bot exists
-    const mistralBot = DEFAULT_BOT_CONFIGS.find((b) => b.name === 'mistral-agent');
-    expect(mistralBot).toBeDefined();
-    expect(mistralBot!.modelProvider).toBe('mistral-codestral');
+  it('Cult of S.A.M. bot config verified in at least one match', async () => {
+    // Verify the Cult of S.A.M. bot exists
+    const cultBot = DEFAULT_BOT_CONFIGS.find((b) => b.name === 'cult-of-sam');
+    expect(cultBot).toBeDefined();
+    expect(cultBot!.personality).toBe('aggressive');
+    expect(cultBot!.displayName).toBe('Cult of S.A.M.');
 
     // Run a match
-    const { matchId, managers } = await runFullMatch('stability-mistral-verify');
+    const { matchId, managers } = await runFullMatch('stability-cult-verify');
     const final = getActiveMatch(matchId)!;
     expect(final.status).toBe('completed');
 
@@ -283,7 +275,7 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
     verifyMatchCompleted(matchId, managers);
   });
 
-  it('round balance validates for all stability seeds', () => {
+  it('round assignments are structurally valid for all stability seeds', () => {
     const seeds = [
       'stability-match-1-seed',
       'stability-match-2-mistral',
@@ -294,8 +286,11 @@ describe('h2x.4: Stability — three consecutive full matches', () => {
       const assignments = getRoundAssignments(seed);
       expect(assignments).toHaveLength(5);
 
-      const errors = validateRoundBalance(assignments);
-      expect(errors).toEqual([]);
+      // Each assignment has a challenge and dataCard
+      for (const assignment of assignments) {
+        expect(assignment.challenge).toBeDefined();
+        expect(assignment.dataCard).toBeDefined();
+      }
 
       // Difficulty progression
       for (let i = 1; i < assignments.length; i++) {

@@ -3,5 +3,5 @@ export {
   getActiveMatch,
   getMatchState,
   submitBid,
-  submitEquip,
+  submitStrategy,
 } from './match-orchestrator.js';

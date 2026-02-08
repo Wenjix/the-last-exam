@@ -1,23 +1,21 @@
 import { useState, useCallback } from 'react';
 import { LoadingDots } from './ui/LoadingDots';
 
-interface BidFormProps {
+interface BudgetBidFormProps {
   matchId: string;
   managerId: string;
   round: number;
-  minBid?: number;
-  maxBid?: number;
+  remainingBudget: number;
   onSubmit: (amount: number) => Promise<void>;
   disabled?: boolean;
 }
 
-export function BidForm({
+export function BudgetBidForm({
   round,
-  minBid = 0,
-  maxBid = 1000,
+  remainingBudget,
   onSubmit,
   disabled = false,
-}: BidFormProps) {
+}: BudgetBidFormProps) {
   const [amount, setAmount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -30,12 +28,12 @@ export function BidForm({
       setError('bid must be a whole number');
       return;
     }
-    if (amount < minBid) {
-      setError(`bid must be at least ${minBid}`);
+    if (amount < 0) {
+      setError('bid must be non-negative');
       return;
     }
-    if (amount > maxBid) {
-      setError(`bid must be at most ${maxBid}`);
+    if (amount > remainingBudget) {
+      setError(`bid exceeds budget (${remainingBudget})`);
       return;
     }
 
@@ -50,7 +48,7 @@ export function BidForm({
     } finally {
       setLoading(false);
     }
-  }, [amount, disabled, submitted, loading, minBid, maxBid, onSubmit]);
+  }, [amount, disabled, submitted, loading, remainingBudget, onSubmit]);
 
   if (submitted) {
     return (
@@ -59,7 +57,7 @@ export function BidForm({
           bid of <strong>{amount}</strong> submitted for round {round}
         </p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>
-          waiting for other managers...
+          waiting for other champions...
         </p>
       </div>
     );
@@ -67,18 +65,23 @@ export function BidForm({
 
   return (
     <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <label
-        htmlFor="bid-amount"
-        style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 200 }}
-      >
-        your bid (round {round})
-      </label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <label
+          htmlFor="bid-amount"
+          style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 200 }}
+        >
+          your bid (round {round})
+        </label>
+        <span style={{ fontSize: '0.75rem', color: 'var(--accent-purple, #a78bfa)' }}>
+          budget: {remainingBudget}
+        </span>
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <input
           id="bid-amount"
           type="number"
-          min={minBid}
-          max={maxBid}
+          min={0}
+          max={remainingBudget}
           value={amount}
           onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
           disabled={disabled || loading}
@@ -86,7 +89,7 @@ export function BidForm({
           style={{ width: '120px' }}
         />
         <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-          ({minBid}-{maxBid})
+          (0-{remainingBudget})
         </span>
       </div>
 

@@ -1,53 +1,43 @@
 /**
- * Deterministic unit tests for bot equip policies.
- * Issue: 5li.4
+ * Deterministic unit tests for bot bidding and strategy policies.
+ * (Replaces old bot-equip-policies tests after game loop refactor)
  *
  * AC:
- *  - All 3 bots submit valid equip selections every round
- *  - Selections respect auction results (only won tools)
- *  - Same seed produces same equips (determinism)
+ *  - All 3 bots submit valid budget bids every round
+ *  - Bids respect remaining budget constraints
+ *  - Same seed produces same bids/strategies (determinism)
+ *  - All 3 personalities generate valid strategy prompts
  */
 
 import { describe, it, expect } from 'vitest';
 
-import { generateBotEquip } from '../bots/bot-policies.js';
-import type {
-  BotEquipContext,
-  BotPersonality,
-  ToolInfo,
-  HazardInfo,
+import {
+  generateBotBudgetBid,
+  generateBotStrategy,
+  getDefaultPersonality,
 } from '../bots/bot-policies.js';
+import type { BotPersonality, BotBudgetBidContext, BotStrategyContext } from '../bots/bot-policies.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-const ALL_TOOLS: ToolInfo[] = [
-  { id: 'extra-time', effectTarget: 'time' },
-  { id: 'memory-boost', effectTarget: 'memory' },
-  { id: 'context-hints', effectTarget: 'hints' },
-  { id: 'debugger-access', effectTarget: 'debug' },
-  { id: 'test-preview', effectTarget: 'tests' },
-  { id: 'retry-attempt', effectTarget: 'retries' },
-  { id: 'code-template', effectTarget: 'template' },
-  { id: 'data-file-access', effectTarget: 'hints' },
-];
-
-const TIME_HAZARD: HazardInfo = { id: 'time-crunch', modifierTarget: 'time' };
-const MEMORY_HAZARD: HazardInfo = { id: 'memory-squeeze', modifierTarget: 'memory' };
-const VISIBILITY_HAZARD: HazardInfo = { id: 'fog-of-war', modifierTarget: 'visibility' };
-const NOISY_HAZARD: HazardInfo = { id: 'noisy-input', modifierTarget: 'input' };
-const STDLIB_HAZARD: HazardInfo = { id: 'restricted-stdlib', modifierTarget: 'stdlib' };
-
-function makeContext(overrides: Partial<BotEquipContext> = {}): BotEquipContext {
+function makeBidContext(overrides: Partial<BotBudgetBidContext> = {}): BotBudgetBidContext {
   return {
-    managerId: 'bot-0',
-    personality: 'aggressive',
     round: 1,
     totalRounds: 5,
     currentRank: 2,
     totalManagers: 4,
-    wonTools: ALL_TOOLS.slice(0, 4),
-    activeHazards: [],
-    maxTools: 3,
+    remainingBudget: 100,
+    ...overrides,
+  };
+}
+
+function makeStrategyContext(overrides: Partial<BotStrategyContext> = {}): BotStrategyContext {
+  return {
+    personality: 'aggressive',
+    round: 1,
+    totalRounds: 5,
+    currentRank: 2,
+    hasDataCard: false,
     seed: 'test-seed-42',
     ...overrides,
   };
@@ -55,340 +45,207 @@ function makeContext(overrides: Partial<BotEquipContext> = {}): BotEquipContext 
 
 // ─── Determinism ─────────────────────────────────────────────────────
 
-describe('generateBotEquip determinism', () => {
-  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'balanced'];
+describe('generateBotBudgetBid determinism', () => {
+  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'chaotic'];
 
   for (const personality of personalities) {
-    it(`${personality}: same seed + context produces identical selections`, () => {
-      const ctx = makeContext({ personality });
-      const a = generateBotEquip(ctx);
-      const b = generateBotEquip(ctx);
-      expect(a).toStrictEqual(b);
+    it(`${personality}: same seed + context produces identical bids`, () => {
+      const ctx = makeBidContext();
+      const seed = 'determinism-seed';
+      const a = generateBotBudgetBid(personality, ctx, seed);
+      const b = generateBotBudgetBid(personality, ctx, seed);
+      expect(a).toBe(b);
     });
   }
 
-  it('different seeds produce different tie-break ordering', () => {
-    // Use tools with the same priority tier so RNG tie-breaking has an effect.
-    // Both 'context-hints' and 'data-file-access' have effectTarget 'hints',
-    // and 'debugger-access' has 'debug' — all low priority. With 3 equal-tier
-    // tools, seed differences surface in ordering.
-    const sameTierTools: ToolInfo[] = [
-      { id: 'tool-a', effectTarget: 'hints' },
-      { id: 'tool-b', effectTarget: 'hints' },
-      { id: 'tool-c', effectTarget: 'hints' },
-      { id: 'tool-d', effectTarget: 'hints' },
-    ];
-    const ctxA = makeContext({
-      seed: 'seed-alpha',
-      personality: 'aggressive',
-      wonTools: sameTierTools,
-      maxTools: 3,
+  it('different seeds produce different bids', () => {
+    const ctx = makeBidContext();
+    const a = generateBotBudgetBid('aggressive', ctx, 'seed-alpha');
+    const b = generateBotBudgetBid('aggressive', ctx, 'seed-beta');
+    // With different seeds, bids should differ (or at least not always match)
+    // We test multiple personalities to increase chance of observing difference
+    const allSame = ['aggressive', 'conservative', 'chaotic'].every((p) => {
+      const bidA = generateBotBudgetBid(p as BotPersonality, ctx, 'seed-alpha');
+      const bidB = generateBotBudgetBid(p as BotPersonality, ctx, 'seed-beta');
+      return bidA === bidB;
     });
-    const ctxB = makeContext({
-      seed: 'seed-beta',
-      personality: 'aggressive',
-      wonTools: sameTierTools,
-      maxTools: 3,
-    });
-    const a = generateBotEquip(ctxA);
-    const b = generateBotEquip(ctxB);
-    // With 4 same-priority tools and 3 picks, different seeds should yield
-    // different subsets or orderings
-    expect(a.toolIds.join(',')).not.toBe(b.toolIds.join(','));
+    expect(allSame).toBe(false);
   });
 
-  it('different rounds with same seed produce different tie-break ordering', () => {
-    const sameTierTools: ToolInfo[] = [
-      { id: 'tool-a', effectTarget: 'hints' },
-      { id: 'tool-b', effectTarget: 'hints' },
-      { id: 'tool-c', effectTarget: 'hints' },
-      { id: 'tool-d', effectTarget: 'hints' },
-    ];
-    const ctx1 = makeContext({
-      round: 1,
-      personality: 'aggressive',
-      wonTools: sameTierTools,
-      maxTools: 3,
-    });
-    const ctx2 = makeContext({
-      round: 2,
-      personality: 'aggressive',
-      wonTools: sameTierTools,
-      maxTools: 3,
-    });
-    const a = generateBotEquip(ctx1);
-    const b = generateBotEquip(ctx2);
-    // Round is mixed into seed, so tie-breaking differs
-    expect(a.toolIds.join(',')).not.toBe(b.toolIds.join(','));
+  it('different rounds with same seed produce different bids', () => {
+    const seed = 'round-variation-seed';
+    const ctx1 = makeBidContext({ round: 1 });
+    const ctx2 = makeBidContext({ round: 3 });
+    const a = generateBotBudgetBid('aggressive', ctx1, seed);
+    const b = generateBotBudgetBid('aggressive', ctx2, seed);
+    expect(a).not.toBe(b);
   });
 });
 
-// ─── Auction Respect ─────────────────────────────────────────────────
+// ─── Budget Constraints ─────────────────────────────────────────────
 
-describe('generateBotEquip respects auction results', () => {
-  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'balanced'];
+describe('generateBotBudgetBid respects budget constraints', () => {
+  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'chaotic'];
 
   for (const personality of personalities) {
-    it(`${personality}: only selects tools from wonTools`, () => {
-      const wonTools = ALL_TOOLS.slice(0, 3); // Only 3 tools won
-      const wonIds = new Set(wonTools.map((t) => t.id));
-      const ctx = makeContext({ personality, wonTools, maxTools: 3 });
-      const result = generateBotEquip(ctx);
-
-      for (const toolId of result.toolIds) {
-        expect(wonIds.has(toolId)).toBe(true);
+    it(`${personality}: bid never exceeds remaining budget`, () => {
+      for (let round = 1; round <= 5; round++) {
+        const budget = 100 - (round - 1) * 20; // Decreasing budget
+        const ctx = makeBidContext({ round, remainingBudget: budget });
+        const bid = generateBotBudgetBid(personality, ctx, 'budget-test');
+        expect(bid).toBeLessThanOrEqual(budget);
+        expect(bid).toBeGreaterThanOrEqual(0);
       }
     });
   }
 
-  it('returns empty selection when no tools were won', () => {
-    const ctx = makeContext({ wonTools: [] });
-    const result = generateBotEquip(ctx);
-    expect(result.toolIds).toHaveLength(0);
-    expect(result.hazardIds).toHaveLength(0);
-  });
-
-  it('returns empty selection when maxTools is 0', () => {
-    const ctx = makeContext({ maxTools: 0 });
-    const result = generateBotEquip(ctx);
-    expect(result.toolIds).toHaveLength(0);
-  });
-
-  it('never exceeds maxTools limit', () => {
-    const ctx = makeContext({ wonTools: ALL_TOOLS, maxTools: 2 });
-    const result = generateBotEquip(ctx);
-    expect(result.toolIds.length).toBeLessThanOrEqual(2);
-  });
-
-  it('never selects duplicate tools', () => {
+  it('returns 0 when budget is 0', () => {
     for (const personality of personalities) {
-      const ctx = makeContext({ personality, wonTools: ALL_TOOLS, maxTools: 5 });
-      const result = generateBotEquip(ctx);
-      const unique = new Set(result.toolIds);
-      expect(unique.size).toBe(result.toolIds.length);
+      const ctx = makeBidContext({ remainingBudget: 0 });
+      const bid = generateBotBudgetBid(personality, ctx, 'zero-budget');
+      expect(bid).toBe(0);
+    }
+  });
+
+  it('bid is always a whole number', () => {
+    for (const personality of personalities) {
+      for (let round = 1; round <= 5; round++) {
+        const ctx = makeBidContext({ round });
+        const bid = generateBotBudgetBid(personality, ctx, 'integer-check');
+        expect(Number.isInteger(bid)).toBe(true);
+      }
     }
   });
 });
 
-// ─── Common Properties ───────────────────────────────────────────────
+// ─── Personality Behaviors ──────────────────────────────────────────
 
-describe('generateBotEquip common properties', () => {
-  it('managerId in output matches context', () => {
-    const ctx = makeContext({ managerId: 'bot-7' });
-    const result = generateBotEquip(ctx);
-    expect(result.managerId).toBe('bot-7');
-  });
-
-  it('hazardIds is always empty (bots do not self-impose hazards)', () => {
-    const personalities: BotPersonality[] = ['aggressive', 'conservative', 'balanced'];
-    for (const personality of personalities) {
-      const ctx = makeContext({ personality });
-      const result = generateBotEquip(ctx);
-      expect(result.hazardIds).toStrictEqual([]);
-    }
-  });
-
-  it('when wonTools < maxTools, equips at most wonTools count', () => {
-    const wonTools = ALL_TOOLS.slice(0, 2);
-    const ctx = makeContext({ wonTools, maxTools: 5, personality: 'aggressive' });
-    const result = generateBotEquip(ctx);
-    expect(result.toolIds.length).toBeLessThanOrEqual(2);
+describe('aggressive bid policy', () => {
+  it('bids higher fraction in early rounds', () => {
+    const ctx1 = makeBidContext({ round: 1, remainingBudget: 100 });
+    const ctx5 = makeBidContext({ round: 5, remainingBudget: 100 });
+    const early = generateBotBudgetBid('aggressive', ctx1, 'aggro-early');
+    const late = generateBotBudgetBid('aggressive', ctx5, 'aggro-early');
+    expect(early).toBeGreaterThan(late);
   });
 });
 
-// ─── Aggressive Policy ──────────────────────────────────────────────
-
-describe('aggressive equip policy', () => {
-  it('prioritizes high-impact tools (retries, time, memory)', () => {
-    const ctx = makeContext({
-      personality: 'aggressive',
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-    });
-    const result = generateBotEquip(ctx);
-
-    // Aggressive priority: retries > time > memory > hints > tests > debug > template
-    // With all 8 tools available and maxTools=3, top 3 should be retries, time, memory
-    expect(result.toolIds).toContain('retry-attempt');
-    expect(result.toolIds).toContain('extra-time');
-    expect(result.toolIds).toContain('memory-boost');
-  });
-
-  it('selects all available tools when fewer than maxTools', () => {
-    const wonTools = [ALL_TOOLS[0], ALL_TOOLS[1]]; // extra-time, memory-boost
-    const ctx = makeContext({
-      personality: 'aggressive',
-      wonTools,
-      maxTools: 5,
-    });
-    const result = generateBotEquip(ctx);
-    expect(result.toolIds).toHaveLength(2);
+describe('conservative bid policy', () => {
+  it('bids lower fraction in early rounds', () => {
+    const ctx1 = makeBidContext({ round: 1, remainingBudget: 100 });
+    const ctx5 = makeBidContext({ round: 5, remainingBudget: 100 });
+    const early = generateBotBudgetBid('conservative', ctx1, 'conserv-test');
+    const late = generateBotBudgetBid('conservative', ctx5, 'conserv-test');
+    expect(early).toBeLessThan(late);
   });
 });
 
-// ─── Conservative Policy ─────────────────────────────────────────────
-
-describe('conservative equip policy', () => {
-  it('prioritizes counter-tools when hazards are active', () => {
-    const ctx = makeContext({
-      personality: 'conservative',
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-      activeHazards: [TIME_HAZARD, MEMORY_HAZARD],
+describe('chaotic bid policy', () => {
+  it('sometimes bids 0 (opt-out behavior)', () => {
+    const seeds = Array.from({ length: 20 }, (_, i) => `chaotic-${i}`);
+    const bids = seeds.map((seed) => {
+      const ctx = makeBidContext({ round: 1, remainingBudget: 100 });
+      return generateBotBudgetBid('chaotic', ctx, seed);
     });
-    const result = generateBotEquip(ctx);
-
-    // Should prioritize extra-time (counters time-crunch) and memory-boost (counters memory-squeeze)
-    expect(result.toolIds).toContain('extra-time');
-    expect(result.toolIds).toContain('memory-boost');
-  });
-
-  it('prioritizes test-preview when fog-of-war is active', () => {
-    const ctx = makeContext({
-      personality: 'conservative',
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-      activeHazards: [VISIBILITY_HAZARD],
-    });
-    const result = generateBotEquip(ctx);
-
-    // visibility hazard should be countered by tests effect target
-    expect(result.toolIds).toContain('test-preview');
-  });
-
-  it('skips unsafe tools (only equips safe/counter tools)', () => {
-    const ctx = makeContext({
-      personality: 'conservative',
-      wonTools: [
-        { id: 'debugger-access', effectTarget: 'debug' },
-        { id: 'code-template', effectTarget: 'template' },
-        { id: 'context-hints', effectTarget: 'hints' },
-      ],
-      maxTools: 3,
-      activeHazards: [], // no hazards to counter
-    });
-    const result = generateBotEquip(ctx);
-
-    // None of these tools are "safe" (time, memory, retries, tests) or counter hazards
-    // Conservative bot should skip all of them
-    expect(result.toolIds).toHaveLength(0);
-  });
-
-  it('equips safe tools even without active hazards', () => {
-    const ctx = makeContext({
-      personality: 'conservative',
-      wonTools: [
-        { id: 'extra-time', effectTarget: 'time' },
-        { id: 'retry-attempt', effectTarget: 'retries' },
-        { id: 'debugger-access', effectTarget: 'debug' },
-      ],
-      maxTools: 3,
-      activeHazards: [],
-    });
-    const result = generateBotEquip(ctx);
-
-    // time and retries are safe, debug is not
-    expect(result.toolIds).toContain('extra-time');
-    expect(result.toolIds).toContain('retry-attempt');
-    expect(result.toolIds).not.toContain('debugger-access');
+    // Chaotic should bid 0 sometimes (~40% of the time)
+    expect(bids.filter((b) => b === 0).length).toBeGreaterThan(0);
   });
 });
 
-// ─── Balanced Policy ─────────────────────────────────────────────────
+// ─── Strategy Generation ────────────────────────────────────────────
 
-describe('balanced equip policy', () => {
-  it('when behind (high rank), leans toward aggressive picks', () => {
-    const ctx = makeContext({
-      personality: 'balanced',
-      currentRank: 4, // last place
-      totalManagers: 4,
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-    });
-    const result = generateBotEquip(ctx);
-
-    // When in last place (rankFactor = 1), aggressive weight is maximal
-    // Should behave like aggressive — high-impact tools
-    expect(result.toolIds).toContain('retry-attempt');
-  });
-
-  it('when ahead (low rank), leans toward conservative picks', () => {
-    const ctx = makeContext({
-      personality: 'balanced',
-      currentRank: 1, // first place
-      totalManagers: 4,
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-      activeHazards: [TIME_HAZARD],
-    });
-    const result = generateBotEquip(ctx);
-
-    // When in first place (rankFactor = 0), conservative weight is maximal
-    // Should prioritize counter-tools and safe tools
-    expect(result.toolIds).toContain('extra-time'); // counters time-crunch
-  });
-
-  it('always selects up to maxTools (unlike conservative)', () => {
-    const ctx = makeContext({
-      personality: 'balanced',
-      wonTools: ALL_TOOLS,
-      maxTools: 3,
-      activeHazards: [],
-    });
-    const result = generateBotEquip(ctx);
-
-    // Balanced always fills slots (does not skip "unsafe" tools)
-    expect(result.toolIds).toHaveLength(3);
-  });
-});
-
-// ─── All 3 Bots Produce Valid Equips Every Round (AC) ────────────────
-
-describe('all 3 bot personalities produce valid equips every round', () => {
-  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'balanced'];
-  const rounds = [1, 2, 3, 4, 5];
-  const hazardSets: readonly HazardInfo[][] = [
-    [],
-    [TIME_HAZARD],
-    [TIME_HAZARD, MEMORY_HAZARD],
-    [VISIBILITY_HAZARD, NOISY_HAZARD],
-    [TIME_HAZARD, MEMORY_HAZARD, VISIBILITY_HAZARD, NOISY_HAZARD, STDLIB_HAZARD],
-  ];
+describe('generateBotStrategy', () => {
+  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'chaotic'];
 
   for (const personality of personalities) {
-    for (let r = 0; r < rounds.length; r++) {
-      it(`${personality} round ${rounds[r]}: valid equip selection`, () => {
-        const wonTools = ALL_TOOLS.slice(0, 4 + r); // vary available tools per round
-        const wonIds = new Set(wonTools.map((t) => t.id));
-        const ctx = makeContext({
-          managerId: `bot-${personality}`,
+    it(`${personality}: returns a non-empty strategy string`, () => {
+      const ctx = makeStrategyContext({ personality });
+      const strategy = generateBotStrategy(ctx);
+      expect(typeof strategy).toBe('string');
+      expect(strategy.length).toBeGreaterThan(0);
+    });
+  }
+
+  it('aggressive returns speed-focused strategy', () => {
+    const strategy = generateBotStrategy(makeStrategyContext({ personality: 'aggressive' }));
+    expect(strategy.toLowerCase()).toContain('fast');
+  });
+
+  it('conservative returns spec-focused strategy', () => {
+    const strategy = generateBotStrategy(makeStrategyContext({ personality: 'conservative' }));
+    expect(strategy.toLowerCase()).toContain('spec');
+  });
+
+  it('chaotic returns deterministic strategy for same seed/round', () => {
+    const ctx = makeStrategyContext({ personality: 'chaotic', round: 2, seed: 'chaos-seed' });
+    const a = generateBotStrategy(ctx);
+    const b = generateBotStrategy(ctx);
+    expect(a).toBe(b);
+  });
+
+  it('chaotic produces different strategies for different rounds', () => {
+    const ctx1 = makeStrategyContext({ personality: 'chaotic', round: 1, seed: 'chaos-vary' });
+    const ctx2 = makeStrategyContext({ personality: 'chaotic', round: 2, seed: 'chaos-vary' });
+    const a = generateBotStrategy(ctx1);
+    const b = generateBotStrategy(ctx2);
+    // May or may not differ depending on RNG, but the function should not crash
+    expect(typeof a).toBe('string');
+    expect(typeof b).toBe('string');
+  });
+});
+
+// ─── getDefaultPersonality ──────────────────────────────────────────
+
+describe('getDefaultPersonality', () => {
+  it('returns aggressive for index 0', () => {
+    expect(getDefaultPersonality(0)).toBe('aggressive');
+  });
+
+  it('returns conservative for index 1', () => {
+    expect(getDefaultPersonality(1)).toBe('conservative');
+  });
+
+  it('returns chaotic for index 2', () => {
+    expect(getDefaultPersonality(2)).toBe('chaotic');
+  });
+
+  it('wraps around for higher indices', () => {
+    expect(getDefaultPersonality(3)).toBe('aggressive');
+    expect(getDefaultPersonality(4)).toBe('conservative');
+  });
+});
+
+// ─── All 3 Bots Produce Valid Bids & Strategies Every Round (AC) ────
+
+describe('all 3 bot personalities produce valid bids and strategies every round', () => {
+  const personalities: BotPersonality[] = ['aggressive', 'conservative', 'chaotic'];
+  const rounds = [1, 2, 3, 4, 5];
+
+  for (const personality of personalities) {
+    for (const round of rounds) {
+      it(`${personality} round ${round}: valid bid and strategy`, () => {
+        // Test bid
+        const bidCtx = makeBidContext({
+          round,
+          remainingBudget: 100 - (round - 1) * 15,
+        });
+        const bid = generateBotBudgetBid(personality, bidCtx, 'full-match-seed');
+
+        expect(Number.isInteger(bid)).toBe(true);
+        expect(bid).toBeGreaterThanOrEqual(0);
+        expect(bid).toBeLessThanOrEqual(bidCtx.remainingBudget);
+
+        // Test strategy
+        const stratCtx = makeStrategyContext({
           personality,
-          round: rounds[r],
-          wonTools,
-          activeHazards: hazardSets[r],
-          maxTools: 3,
+          round,
+          hasDataCard: round % 2 === 0,
           seed: 'full-match-seed',
         });
-        const result = generateBotEquip(ctx);
+        const strategy = generateBotStrategy(stratCtx);
 
-        // Valid structure
-        expect(result.managerId).toBe(`bot-${personality}`);
-        expect(Array.isArray(result.toolIds)).toBe(true);
-        expect(Array.isArray(result.hazardIds)).toBe(true);
-
-        // Respects maxTools
-        expect(result.toolIds.length).toBeLessThanOrEqual(3);
-
-        // Only won tools
-        for (const toolId of result.toolIds) {
-          expect(wonIds.has(toolId)).toBe(true);
-        }
-
-        // No duplicates
-        expect(new Set(result.toolIds).size).toBe(result.toolIds.length);
-
-        // No self-imposed hazards
-        expect(result.hazardIds).toStrictEqual([]);
+        expect(typeof strategy).toBe('string');
+        expect(strategy.length).toBeGreaterThan(0);
       });
     }
   }

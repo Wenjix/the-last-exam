@@ -4,25 +4,11 @@ import { useEffect, useReducer, useRef, useCallback } from 'react';
 
 export type MatchPhase =
   | 'briefing'
-  | 'hidden_bid'
-  | 'bid_resolve'
-  | 'equip'
-  | 'run'
-  | 'resolve'
+  | 'bidding'
+  | 'strategy'
+  | 'execution'
+  | 'scoring'
   | 'final_standings';
-
-export interface ToolInfo {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface AuctionResultEntry {
-  managerId: string;
-  managerName: string;
-  amount: number;
-  pickOrder: number;
-}
 
 export interface MatchUiState {
   connected: boolean;
@@ -31,12 +17,12 @@ export interface MatchUiState {
   phase: MatchPhase;
   deadline: string | null;
   scores: Record<string, number>;
+  budgets: Record<string, number>;
   commentary: string[];
   challengeTitle: string | null;
   challengeDescription: string | null;
-  availableTools: ToolInfo[];
-  roundHazard: ToolInfo | null;
-  auctionResults: AuctionResultEntry[] | null;
+  dataCard: { id: string; title: string; description: string } | null;
+  bidWinner: { managerId: string; managerName: string; amount: number } | null;
   finalStandings: Array<{
     managerId: string;
     managerName: string;
@@ -60,11 +46,9 @@ type MatchAction =
       deadline: string | null;
       challengeTitle?: string;
       challengeDescription?: string;
-      availableTools?: ToolInfo[];
-      roundHazard?: ToolInfo | null;
-      auctionResults?: AuctionResultEntry[] | null;
-      hazardName?: string;
-      hazardDescription?: string;
+      dataCard?: { id: string; title: string; description: string } | null;
+      budgets?: Record<string, number>;
+      bidWinner?: { managerId: string; managerName: string; amount: number } | null;
     }
   | { type: 'ROUND_RESULT'; standings: Record<string, number> }
   | { type: 'COMMENTARY_UPDATE'; text: string }
@@ -78,12 +62,12 @@ const initialState: MatchUiState = {
   phase: 'briefing',
   deadline: null,
   scores: {},
+  budgets: {},
   commentary: [],
   challengeTitle: null,
   challengeDescription: null,
-  availableTools: [],
-  roundHazard: null,
-  auctionResults: null,
+  dataCard: null,
+  bidWinner: null,
   finalStandings: null,
   lastEvent: null,
 };
@@ -97,18 +81,6 @@ function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
     case 'JOINED_MATCH':
       return { ...state, matchId: action.matchId };
     case 'PHASE_TRANSITION': {
-      // Build hazard from either roundHazard object or hazardName/hazardDescription fields
-      let hazard = state.roundHazard;
-      if (action.roundHazard) {
-        hazard = action.roundHazard;
-      } else if (action.hazardName) {
-        hazard = {
-          id: '',
-          name: action.hazardName,
-          description: action.hazardDescription ?? '',
-        };
-      }
-
       return {
         ...state,
         round: action.round,
@@ -116,9 +88,9 @@ function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
         deadline: action.deadline,
         challengeTitle: action.challengeTitle ?? state.challengeTitle,
         challengeDescription: action.challengeDescription ?? state.challengeDescription,
-        availableTools: action.availableTools ?? state.availableTools,
-        roundHazard: hazard,
-        auctionResults: action.auctionResults ?? state.auctionResults,
+        dataCard: action.dataCard !== undefined ? action.dataCard : state.dataCard,
+        budgets: action.budgets ?? state.budgets,
+        bidWinner: action.bidWinner !== undefined ? action.bidWinner : state.bidWinner,
       };
     }
     case 'ROUND_RESULT':
@@ -152,7 +124,6 @@ export function useMatchSocket(serverUrl?: string) {
 
       ws.onclose = () => {
         dispatch({ type: 'DISCONNECTED' });
-        // Auto-reconnect after 2s
         reconnectTimer.current = setTimeout(connect, 2000);
       };
 
@@ -179,11 +150,9 @@ export function useMatchSocket(serverUrl?: string) {
                 deadline: (data.deadline as string) || null,
                 challengeTitle: data.challengeTitle as string | undefined,
                 challengeDescription: data.challengeDescription as string | undefined,
-                availableTools: data.availableTools as ToolInfo[] | undefined,
-                roundHazard: data.roundHazard as ToolInfo | undefined,
-                auctionResults: data.auctionResults as AuctionResultEntry[] | undefined,
-                hazardName: data.hazardName as string | undefined,
-                hazardDescription: data.hazardDescription as string | undefined,
+                dataCard: data.dataCard as { id: string; title: string; description: string } | undefined,
+                budgets: data.budgets as Record<string, number> | undefined,
+                bidWinner: data.bidWinner as { managerId: string; managerName: string; amount: number } | null | undefined,
               });
               break;
             case 'round_result':

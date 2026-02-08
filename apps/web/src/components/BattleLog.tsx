@@ -4,7 +4,7 @@ import './BattleLog.css';
 
 export interface BattleLogEntry {
   id: string;
-  type: 'system' | 'phase_transition' | 'bid' | 'score' | 'commentary' | 'equip' | 'run' | 'error';
+  type: 'system' | 'phase_transition' | 'bid' | 'score' | 'commentary' | 'run' | 'error';
   text: string;
   timestamp: string;
 }

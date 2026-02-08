@@ -1,4 +1,4 @@
-export const PHASES = ['briefing', 'hidden_bid', 'bid_resolve', 'equip', 'run', 'resolve'] as const;
+export const PHASES = ['briefing', 'bidding', 'strategy', 'execution', 'scoring'] as const;
 
 export type RoundPhase = (typeof PHASES)[number];
 export type TerminalPhase = 'final_standings';

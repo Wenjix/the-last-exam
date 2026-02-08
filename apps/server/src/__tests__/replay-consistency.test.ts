@@ -16,7 +16,7 @@ import { getMatchEvents } from '../persistence/event-store.js';
 import {
   createMatch,
   submitBid,
-  submitEquip,
+  submitStrategy,
   getActiveMatch,
 } from '../orchestrator/match-orchestrator.js';
 import { reconstructReplay } from '../services/replay-service.js';
@@ -37,14 +37,13 @@ async function driveFullMatch(seed: string) {
   insertMatchRow(matchId, seed);
 
   for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-    await vi.advanceTimersByTimeAsync(10_000); // briefing
+    await vi.advanceTimersByTimeAsync(5_000); // briefing
     submitBid(matchId, humanManager.id, round * 15);
-    await vi.advanceTimersByTimeAsync(30_000); // hidden_bid
-    await vi.advanceTimersByTimeAsync(5_000); // bid_resolve
-    submitEquip(matchId, humanManager.id, ['tool-a'], ['hazard-b']);
-    await vi.advanceTimersByTimeAsync(30_000); // equip
-    await vi.advanceTimersByTimeAsync(2_000); // run
-    await vi.advanceTimersByTimeAsync(15_000); // resolve
+    await vi.advanceTimersByTimeAsync(5_000); // bidding
+    submitStrategy(matchId, humanManager.id, `strategy round ${round}`);
+    await vi.advanceTimersByTimeAsync(10_000); // strategy
+    await vi.advanceTimersByTimeAsync(2_000); // execution
+    await vi.advanceTimersByTimeAsync(5_000); // scoring
   }
 
   insertMatchRow(matchId, seed, 'completed');
@@ -110,10 +109,10 @@ describe('28y.3: Replay reconstruction consistency', () => {
     const phaseTransitions = replay.data.events.filter((e) => e.event.type === 'phase_transition');
 
     // There must be phase transitions for every phase in every round
-    // 6 phases * 5 rounds = 30 startPhase events, minus the first briefing
+    // 5 phases * 5 rounds = 25 startPhase events, minus the first briefing
     // which fails to persist (match row not yet inserted when createMatch
     // calls startPhase for the initial briefing)
-    expect(phaseTransitions.length).toBeGreaterThanOrEqual(29);
+    expect(phaseTransitions.length).toBeGreaterThanOrEqual(24);
 
     // Verify all round numbers 1-5 are represented
     const roundsInTransitions = new Set(

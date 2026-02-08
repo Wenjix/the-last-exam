@@ -1,29 +1,25 @@
 /**
  * Bot validation integration test: full 5-round match with 3 bots.
- * Issue: 5li.10
+ * (Updated for game loop refactor: budget bidding + strategy generation)
  *
  * AC:
  *  - All 3 bots complete all 5 rounds
- *  - Zero validation errors (bids + equips)
+ *  - Zero validation errors (budget bids + strategies)
  *  - Test deterministic (same seed = same results)
  *  - Must complete in <5s
  */
 
 import { describe, it, expect } from 'vitest';
 
-import { generateBotBid, generateBotEquip, getDefaultPersonality } from '../bots/bot-policies.js';
+import { generateBotBudgetBid, generateBotStrategy, getDefaultPersonality } from '../bots/bot-policies.js';
 import type {
-  BotBidContext,
-  BotEquipContext,
+  BotBudgetBidContext,
+  BotStrategyContext,
   BotPersonality,
-  ToolInfo,
-  HazardInfo,
 } from '../bots/bot-policies.js';
 
-import { resolveAuction, validateBid } from '@tle/game-core/src/auction/index.js';
-import type { BidEntry, AuctionResult } from '@tle/game-core/src/auction/index.js';
-import { validateEquipSelection } from '@tle/game-core/src/equip/index.js';
-import type { EquipSelection } from '@tle/game-core/src/equip/index.js';
+import { resolveSealedBid, validateBudgetBid } from '@tle/game-core/src/bidding/index.js';
+import type { BudgetBidEntry, BidResult } from '@tle/game-core/src/bidding/index.js';
 import { calculateScore } from '@tle/game-core/src/scoring/index.js';
 import type { HarnessResult, ScoreResult } from '@tle/game-core/src/scoring/index.js';
 import { finalizaStandings } from '@tle/game-core/src/standings/index.js';
@@ -33,35 +29,9 @@ import type { RoundScore, StandingEntry } from '@tle/game-core/src/standings/ind
 
 const TOTAL_ROUNDS = 5;
 const NUM_BOTS = 3;
-const MAX_BID = 100;
-const MAX_TOOLS_PER_ROUND = 3;
+const INITIAL_BUDGET = 100;
 
 const MANAGER_IDS = ['bot-0', 'bot-1', 'bot-2'] as const;
-
-/** All tools in the game (mirrors content/data). */
-const ALL_TOOLS: ToolInfo[] = [
-  { id: 'extra-time', effectTarget: 'time' },
-  { id: 'memory-boost', effectTarget: 'memory' },
-  { id: 'context-hints', effectTarget: 'hints' },
-  { id: 'debugger-access', effectTarget: 'debug' },
-  { id: 'test-preview', effectTarget: 'tests' },
-  { id: 'retry-attempt', effectTarget: 'retries' },
-  { id: 'code-template', effectTarget: 'template' },
-  { id: 'data-file-access', effectTarget: 'hints' },
-];
-
-const ALL_TOOL_IDS = ALL_TOOLS.map((t) => t.id);
-
-/** All hazards in the game (mirrors content/data). */
-const ALL_HAZARDS: HazardInfo[] = [
-  { id: 'time-crunch', modifierTarget: 'time' },
-  { id: 'memory-squeeze', modifierTarget: 'memory' },
-  { id: 'fog-of-war', modifierTarget: 'visibility' },
-  { id: 'noisy-input', modifierTarget: 'input' },
-  { id: 'restricted-stdlib', modifierTarget: 'stdlib' },
-];
-
-const ALL_HAZARD_IDS = ALL_HAZARDS.map((h) => h.id);
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -70,6 +40,7 @@ interface BotState {
   readonly personality: BotPersonality;
   cumulativeScore: number;
   rank: number;
+  remainingBudget: number;
 }
 
 /**
@@ -89,36 +60,6 @@ function mockHarnessResult(botIndex: number, round: number, _seed: string): Harn
 }
 
 /**
- * Distribute won tools among bots based on auction pick order.
- * Each bot picks up to MAX_TOOLS_PER_ROUND tools in pick order.
- */
-function distributeTools(auctionResults: AuctionResult[]): Map<string, ToolInfo[]> {
-  const claimed = new Set<string>();
-  const distribution = new Map<string, ToolInfo[]>();
-
-  // Initialize empty arrays
-  for (const result of auctionResults) {
-    distribution.set(result.managerId, []);
-  }
-
-  // Sort by pick order and let each bot claim tools
-  const sorted = [...auctionResults].sort((a, b) => a.pickOrder - b.pickOrder);
-  for (const result of sorted) {
-    const tools: ToolInfo[] = [];
-    for (const tool of ALL_TOOLS) {
-      if (tools.length >= MAX_TOOLS_PER_ROUND) break;
-      if (!claimed.has(tool.id)) {
-        tools.push(tool);
-        claimed.add(tool.id);
-      }
-    }
-    distribution.set(result.managerId, tools);
-  }
-
-  return distribution;
-}
-
-/**
  * Run a full 5-round match simulation with 3 bots.
  * Returns the final standings and all round scores.
  */
@@ -126,48 +67,38 @@ function runFullMatch(seed: string): {
   standings: StandingEntry[];
   allRoundScores: RoundScore[];
   bidValidationErrors: string[];
-  equipValidationErrors: string[];
+  strategyValidationErrors: string[];
 } {
   const bots: BotState[] = MANAGER_IDS.map((id, i) => ({
     managerId: id,
     personality: getDefaultPersonality(i),
     cumulativeScore: 0,
     rank: 1, // All start tied
+    remainingBudget: INITIAL_BUDGET,
   }));
 
   const allRoundScores: RoundScore[] = [];
   const bidValidationErrors: string[] = [];
-  const equipValidationErrors: string[] = [];
+  const strategyValidationErrors: string[] = [];
 
   for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-    // Pick 2 random hazards active this round (deterministic via round number)
-    const activeHazards = ALL_HAZARDS.slice(
-      round % ALL_HAZARDS.length,
-      (round % ALL_HAZARDS.length) + 2,
-    );
-    if (activeHazards.length < 2) {
-      // Wrap around
-      activeHazards.push(...ALL_HAZARDS.slice(0, 2 - activeHazards.length));
-    }
+    // ── Phase 1: Budget Bidding ──────────────────────────────────
 
-    // ── Phase 1: Bidding ─────────────────────────────────────────
-
-    const bidEntries: BidEntry[] = [];
+    const bidEntries: BudgetBidEntry[] = [];
 
     for (const bot of bots) {
-      const bidContext: BotBidContext = {
+      const bidContext: BotBudgetBidContext = {
         round,
         totalRounds: TOTAL_ROUNDS,
         currentRank: bot.rank,
         totalManagers: NUM_BOTS,
-        currentScore: bot.cumulativeScore,
-        maxBid: MAX_BID,
+        remainingBudget: bot.remainingBudget,
       };
 
-      const bidAmount = generateBotBid(bot.personality, bidContext, seed);
+      const bidAmount = generateBotBudgetBid(bot.personality, bidContext, seed);
 
       // Validate bid
-      const bidError = validateBid(bidAmount, 0, MAX_BID);
+      const bidError = validateBudgetBid(bidAmount, bot.remainingBudget);
       if (bidError !== null) {
         bidValidationErrors.push(
           `Round ${round}, ${bot.managerId}: ${bidError} (bid=${bidAmount})`,
@@ -178,47 +109,37 @@ function runFullMatch(seed: string): {
         managerId: bot.managerId,
         amount: bidAmount,
         currentRank: bot.rank,
+        remainingBudget: bot.remainingBudget,
       });
     }
 
-    // ── Phase 2: Auction Resolution ──────────────────────────────
+    // ── Phase 2: Bid Resolution ──────────────────────────────────
 
-    const auctionResults = resolveAuction(bidEntries, `${seed}:auction:${round}`);
+    const bidResult: BidResult = resolveSealedBid(bidEntries, `${seed}:bid:${round}`);
 
-    // ── Phase 3: Tool Distribution & Equip ───────────────────────
+    // Update budgets from bid result
+    for (const bot of bots) {
+      bot.remainingBudget = bidResult.updatedBudgets[bot.managerId] ?? bot.remainingBudget;
+    }
 
-    const toolDistribution = distributeTools(auctionResults);
+    // ── Phase 3: Strategy Generation ─────────────────────────────
 
     for (const bot of bots) {
-      const wonTools = toolDistribution.get(bot.managerId) || [];
-
-      const equipContext: BotEquipContext = {
-        managerId: bot.managerId,
+      const strategyContext: BotStrategyContext = {
         personality: bot.personality,
         round,
         totalRounds: TOTAL_ROUNDS,
         currentRank: bot.rank,
-        totalManagers: NUM_BOTS,
-        wonTools,
-        activeHazards,
-        maxTools: MAX_TOOLS_PER_ROUND,
+        hasDataCard: bidResult.winnerId === bot.managerId,
         seed,
       };
 
-      const equipSelection: EquipSelection = generateBotEquip(equipContext);
+      const strategy = generateBotStrategy(strategyContext);
 
-      // Validate equip selection
-      const equipResult = validateEquipSelection(
-        equipSelection,
-        auctionResults,
-        ALL_TOOL_IDS,
-        ALL_HAZARD_IDS,
-        MAX_TOOLS_PER_ROUND,
-      );
-
-      if (!equipResult.valid) {
-        equipValidationErrors.push(
-          `Round ${round}, ${bot.managerId}: ${equipResult.errors.join('; ')}`,
+      // Validate strategy
+      if (typeof strategy !== 'string' || strategy.length === 0) {
+        strategyValidationErrors.push(
+          `Round ${round}, ${bot.managerId}: empty or invalid strategy`,
         );
       }
     }
@@ -241,7 +162,6 @@ function runFullMatch(seed: string): {
 
     // ── Phase 5: Update Rankings ─────────────────────────────────
 
-    // Sort bots by cumulative score descending to determine ranks for next round
     const sorted = [...bots].sort((a, b) => b.cumulativeScore - a.cumulativeScore);
     for (let i = 0; i < sorted.length; i++) {
       sorted[i].rank = i + 1;
@@ -252,12 +172,12 @@ function runFullMatch(seed: string): {
 
   const standings = finalizaStandings(MANAGER_IDS as unknown as string[], allRoundScores, seed);
 
-  return { standings, allRoundScores, bidValidationErrors, equipValidationErrors };
+  return { standings, allRoundScores, bidValidationErrors, strategyValidationErrors };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
 
-describe('Bot full match validation (5li.10)', () => {
+describe('Bot full match validation (budget bidding + strategy)', () => {
   const TEST_SEEDS = ['match-seed-alpha', 'match-seed-beta', 'match-seed-gamma'];
 
   it('should complete 5 rounds with 3 bots and zero validation errors', () => {
@@ -267,8 +187,8 @@ describe('Bot full match validation (5li.10)', () => {
       // No bid validation errors
       expect(result.bidValidationErrors).toEqual([]);
 
-      // No equip validation errors
-      expect(result.equipValidationErrors).toEqual([]);
+      // No strategy validation errors
+      expect(result.strategyValidationErrors).toEqual([]);
 
       // Should have scores for all bots in all rounds
       expect(result.allRoundScores).toHaveLength(NUM_BOTS * TOTAL_ROUNDS);
@@ -317,83 +237,59 @@ describe('Bot full match validation (5li.10)', () => {
   it('should produce different results with different seeds', () => {
     const results = TEST_SEEDS.map((seed) => runFullMatch(seed));
 
-    // At least one pair of seeds should produce different standings orders
-    void results.map((r) => r.standings.map((s) => s.managerId).join(','));
-
-    // With 3 different seeds, we expect at least some variation in bid amounts
-    // (Even if standings happen to match, the round scores should differ due to different bids)
-    const allBidsSame = results.every(
-      (r) => JSON.stringify(r.allRoundScores) === JSON.stringify(results[0].allRoundScores),
-    );
-    // Scores are deterministic per seed but use mock harness (same formula),
-    // so round scores will actually be the same. The variation shows in bids/equips.
-    // Instead, verify that at least standings or bid errors differ
-    // (In practice, since harness results are fixed, standings may be identical.)
+    // With 3 different seeds and mock harness results (deterministic per seed),
+    // the scoring itself may be identical, but bid amounts will differ.
     // The important thing is determinism per seed, verified above.
-    void allBidsSame;
     expect(results).toHaveLength(3);
   });
 
   describe('all 3 bot personalities complete every round', () => {
-    const personalities: BotPersonality[] = ['aggressive', 'conservative', 'balanced'];
+    const personalities: BotPersonality[] = ['aggressive', 'conservative', 'chaotic'];
 
     for (const personality of personalities) {
-      it(`${personality} bot generates valid bids in all 5 rounds`, () => {
+      it(`${personality} bot generates valid budget bids in all 5 rounds`, () => {
         const seed = 'personality-validation-seed';
+        let budget = INITIAL_BUDGET;
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-          const bidContext: BotBidContext = {
+          const bidContext: BotBudgetBidContext = {
             round,
             totalRounds: TOTAL_ROUNDS,
             currentRank: 2,
             totalManagers: NUM_BOTS,
-            currentScore: 500 * (round - 1),
-            maxBid: MAX_BID,
+            remainingBudget: budget,
           };
 
-          const bid = generateBotBid(personality, bidContext, seed);
-          const error = validateBid(bid, 0, MAX_BID);
+          const bid = generateBotBudgetBid(personality, bidContext, seed);
+          const error = validateBudgetBid(bid, budget);
 
           expect(error).toBeNull();
           expect(Number.isInteger(bid)).toBe(true);
           expect(bid).toBeGreaterThanOrEqual(0);
-          expect(bid).toBeLessThanOrEqual(MAX_BID);
+          expect(bid).toBeLessThanOrEqual(budget);
+
+          // Simulate spending the bid
+          budget -= bid;
         }
       });
 
-      it(`${personality} bot generates valid equip selections in all 5 rounds`, () => {
+      it(`${personality} bot generates valid strategies in all 5 rounds`, () => {
         const seed = 'personality-validation-seed';
 
         for (let round = 1; round <= TOTAL_ROUNDS; round++) {
-          const wonTools = ALL_TOOLS.slice(0, MAX_TOOLS_PER_ROUND + 1); // More than max to test limits
-
-          const equipContext: BotEquipContext = {
-            managerId: `bot-${personalities.indexOf(personality)}`,
+          const strategyContext: BotStrategyContext = {
             personality,
             round,
             totalRounds: TOTAL_ROUNDS,
             currentRank: 2,
-            totalManagers: NUM_BOTS,
-            wonTools,
-            activeHazards: ALL_HAZARDS.slice(0, 2),
-            maxTools: MAX_TOOLS_PER_ROUND,
+            hasDataCard: round % 2 === 0,
             seed,
           };
 
-          const selection = generateBotEquip(equipContext);
+          const strategy = generateBotStrategy(strategyContext);
 
-          // Equip should not exceed max tools
-          expect(selection.toolIds.length).toBeLessThanOrEqual(MAX_TOOLS_PER_ROUND);
-
-          // All equipped tools should be from the won tools
-          const wonToolIds = wonTools.map((t) => t.id);
-          for (const toolId of selection.toolIds) {
-            expect(wonToolIds).toContain(toolId);
-          }
-
-          // No duplicate tools
-          const uniqueTools = new Set(selection.toolIds);
-          expect(uniqueTools.size).toBe(selection.toolIds.length);
+          expect(typeof strategy).toBe('string');
+          expect(strategy.length).toBeGreaterThan(0);
         }
       });
     }
@@ -436,5 +332,16 @@ describe('Bot full match validation (5li.10)', () => {
       expect(rs.score.resourceFactor).toBeGreaterThanOrEqual(0);
       expect(rs.score.resourceFactor).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('budget depletes correctly across rounds', () => {
+    const seed = 'budget-depletion-test';
+    const result = runFullMatch(seed);
+
+    // No errors means budgets were always respected
+    expect(result.bidValidationErrors).toEqual([]);
+
+    // The match completed successfully
+    expect(result.standings).toHaveLength(NUM_BOTS);
   });
 });

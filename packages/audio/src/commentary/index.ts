@@ -13,3 +13,5 @@ export {
   finalStandingsCommentary,
   heartbeatCommentary,
 } from './templates.js';
+export { HeartbeatScheduler } from './heartbeat-scheduler.js';
+export type { HeartbeatCallback } from './heartbeat-scheduler.js';

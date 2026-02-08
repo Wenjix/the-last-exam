@@ -1,2 +1,8 @@
-export { generateBotBid, getDefaultPersonality } from './bot-policies.js';
-export type { BotPersonality, BotBidContext } from './bot-policies.js';
+export { generateBotBid, generateBotEquip, getDefaultPersonality } from './bot-policies.js';
+export type {
+  BotPersonality,
+  BotBidContext,
+  BotEquipContext,
+  ToolInfo,
+  HazardInfo,
+} from './bot-policies.js';

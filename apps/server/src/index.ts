@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { healthRouter } from './routes/health.js';
 import { matchesRouter } from './routes/matches.js';
+import { replayRouter } from './routes/replay.js';
 import { setupWsHandlers } from './ws/index.js';
 import { initDatabase } from './persistence/index.js';
 
@@ -16,6 +17,7 @@ app.use(express.json());
 // Routes
 app.use(healthRouter);
 app.use(matchesRouter);
+app.use(replayRouter);
 
 // Create HTTP server for both REST and WS
 const server = createServer(app);

@@ -124,6 +124,13 @@ importers:
       '@tle/game-core':
         specifier: workspace:*
         version: link:../game-core
+      seedrandom:
+        specifier: ^3.0.5
+        version: 3.0.5
+    devDependencies:
+      '@types/seedrandom':
+        specifier: ^3.0.8
+        version: 3.0.8
 
   packages/audio:
     dependencies:

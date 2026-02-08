@@ -39,6 +39,9 @@ jobs:
       - name: Format check
         run: pnpm run format
 
+      - name: De-branding guard
+        run: bash scripts/check-legacy-terms.sh
+
       - name: Test
         run: pnpm test
 

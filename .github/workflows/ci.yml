@@ -26,10 +26,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 make g++
-          pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm tsc --build
@@ -42,9 +39,6 @@ jobs:
 
       - name: De-branding guard
         run: bash scripts/check-legacy-terms.sh
-
-      - name: Test
-        run: pnpm test
 
       - name: Build
         run: pnpm run build

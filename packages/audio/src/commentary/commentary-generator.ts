@@ -6,6 +6,8 @@ import {
   roundResultCommentary,
   finalStandingsCommentary,
 } from './templates.js';
+import { CommentaryCircuitBreaker } from './circuit-breaker.js';
+import type { CircuitBreakerConfig } from './circuit-breaker.js';
 
 export interface CommentaryEvent {
   readonly type: string;
@@ -24,14 +26,28 @@ export interface CommentaryOutput {
 
 export type CommentaryListener = (output: CommentaryOutput) => void;
 
+export interface CommentaryGeneratorOptions {
+  /** Circuit breaker configuration for non-blocking commentary. */
+  readonly circuitBreaker?: CircuitBreakerConfig;
+}
+
 /**
  * Async commentary generator. Subscribes to game events
- * and produces text commentary. Fire-and-forget — never blocks
+ * and produces text commentary. Fire-and-forget -- never blocks
  * the game loop.
+ *
+ * Wraps commentary generation in a {@link CommentaryCircuitBreaker}
+ * so that slow or failing operations are timed out (default 5 s)
+ * and the circuit opens after repeated failures.
  */
 export class CommentaryGenerator {
   private listeners: CommentaryListener[] = [];
   private language: string = 'en';
+  private readonly circuitBreaker: CommentaryCircuitBreaker;
+
+  constructor(options: CommentaryGeneratorOptions = {}) {
+    this.circuitBreaker = new CommentaryCircuitBreaker(options.circuitBreaker);
+  }
 
   /**
    * Register a listener for commentary output.
@@ -56,11 +72,18 @@ export class CommentaryGenerator {
 
   /**
    * Process a game event and generate commentary.
-   * Async — returns immediately, commentary emitted via listeners.
-   * Errors are caught and logged, never thrown.
+   *
+   * Fire-and-forget -- returns immediately. The actual generation
+   * runs inside the circuit breaker with a timeout. If commentary
+   * takes too long or fails repeatedly, the circuit opens and
+   * subsequent calls are skipped until the cooldown elapses.
+   *
+   * **This method never throws.**
    */
-  async processEvent(event: CommentaryEvent): Promise<void> {
-    try {
+  processEvent(event: CommentaryEvent): void {
+    // Fire-and-forget: kick off the async work but never await it
+    // at the call site. The circuit breaker handles timeouts.
+    void this.circuitBreaker.execute(async () => {
       const text = this.generateText(event);
       if (!text) return;
 
@@ -80,10 +103,14 @@ export class CommentaryGenerator {
           // Never let listener errors propagate
         }
       }
-    } catch {
-      // Commentary generation failures are non-blocking
-      // Log but never throw
-    }
+    });
+  }
+
+  /**
+   * Returns the underlying circuit breaker for inspection / testing.
+   */
+  get breaker(): CommentaryCircuitBreaker {
+    return this.circuitBreaker;
   }
 
   /**

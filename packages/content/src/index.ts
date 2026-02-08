@@ -1,2 +1,3 @@
-// @tle/content - placeholder entry point
-export {};
+// @tle/content - challenge, hazard, tool, and trait content
+export * from './schemas.js';
+export * from './loader.js';

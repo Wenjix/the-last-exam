@@ -1,1 +1,37 @@
-// @tle/server - placeholder entry point
+import express from 'express';
+import cors from 'cors';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { healthRouter } from './routes/health.js';
+
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use(healthRouter);
+
+// Create HTTP server for both REST and WS
+const server = createServer(app);
+
+// WebSocket server on same HTTP server
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', (ws) => {
+  ws.on('message', (data) => {
+    // Placeholder — will be wired to match rooms in ao7.x
+    const message = data.toString();
+    console.log('WS message received:', message);
+  });
+
+  ws.send(JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() }));
+});
+
+server.listen(PORT, () => {
+  console.log(`[tle-server] listening on http://localhost:${PORT}`);
+  console.log(`[tle-server] WebSocket on ws://localhost:${PORT}/ws`);
+});
+
+export { app, server, wss };

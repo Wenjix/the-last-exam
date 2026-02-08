@@ -11,6 +11,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tle/contracts": "workspace:*"
+    "@tle/contracts": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

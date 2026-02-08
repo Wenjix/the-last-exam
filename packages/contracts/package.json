@@ -9,5 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "echo \"No tests yet\"",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
   }
 }

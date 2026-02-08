@@ -26,3 +26,9 @@ export {
   getRecommendedHeartbeatInterval,
 } from './tuning.js';
 export type { CommentaryTuningConfig, TuningPhase, Verbosity } from './tuning.js';
+export {
+  generateMultilingualCommentary,
+  LANGUAGE_LABELS,
+  SUPPORTED_LANGUAGES,
+} from './multilingual.js';
+export type { CommentaryLanguage, MultilingualCommentaryEvent } from './multilingual.js';

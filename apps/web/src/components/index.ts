@@ -6,3 +6,4 @@ export { BidForm } from './BidForm';
 export { EquipForm } from './EquipForm';
 export { AudioPlayer } from './AudioPlayer';
 export { ReplayViewer } from './ReplayViewer';
+export { LanguageSelector } from './LanguageSelector';

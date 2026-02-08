@@ -1,6 +1,8 @@
 import { loadHazards, loadTools } from '../loader.js';
 import type { Hazard, Tool } from '../schemas.js';
 
+export { getDefaultChallenges } from './challenges.js';
+
 const HAZARDS_DATA = [
   {
     id: 'time-crunch',

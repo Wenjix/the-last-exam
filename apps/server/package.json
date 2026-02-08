@@ -28,6 +28,8 @@
     "@types/uuid": "^11.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.21.0",
-    "@tle/audio": "workspace:*"
+    "@tle/ai": "workspace:*",
+    "@tle/audio": "workspace:*",
+    "@tle/content": "workspace:*"
   }
 }

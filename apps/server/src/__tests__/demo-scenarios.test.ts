@@ -1,0 +1,251 @@
+/**
+ * h2x.3 -- Demo scenarios with pre-seeded matches.
+ *
+ * Three scripted scenarios designed to showcase interesting match dynamics:
+ *   1. Dramatic Comeback  — trailing manager surges in late rounds
+ *   2. Mistral Showcase   — Mistral Agent dominates with aggressive strategy
+ *   3. Close Finish       — managers finish within tight score margins
+ *
+ * Each scenario uses a fixed seed for deterministic, reproducible outcomes.
+ * Run via: pnpm vitest run apps/server/src/__tests__/demo-scenarios.test.ts
+ * Or via: ./scripts/demo.sh
+ */
+
+import { initDatabase, closeDatabase } from '../persistence/database.js';
+import { getMatchEvents } from '../persistence/event-store.js';
+import {
+  createMatch,
+  getActiveMatch,
+  submitBid,
+  submitEquip,
+} from '../orchestrator/match-orchestrator.js';
+import { reconstructReplay } from '../services/replay-service.js';
+import { buildManagers, insertMatchRow, TOTAL_ROUNDS } from './helpers.js';
+import { DEFAULT_BOT_CONFIGS } from '@tle/ai';
+import { getRoundAssignments, validateRoundBalance } from '@tle/content';
+import { generateMultilingualCommentary, SUPPORTED_LANGUAGES } from '@tle/audio';
+import type { CommentaryLanguage } from '@tle/audio';
+
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
+
+describe('h2x.3: Demo scenarios', () => {
+  beforeAll(() => {
+    initDatabase(':memory:');
+  });
+
+  afterAll(() => {
+    closeDatabase();
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  // -----------------------------------------------------------------------
+  // Helper: drive a match with custom bid strategy
+  // -----------------------------------------------------------------------
+
+  async function driveMatch(seed: string, humanBidFn: (round: number) => number) {
+    const managers = buildManagers();
+    const human = managers[0]!;
+    const match = createMatch(managers, seed);
+    const matchId = match.id;
+    insertMatchRow(matchId, seed);
+
+    for (let round = 1; round <= TOTAL_ROUNDS; round++) {
+      // briefing
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      // hidden_bid
+      submitBid(matchId, human.id, humanBidFn(round));
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      // bid_resolve
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      // equip
+      submitEquip(matchId, human.id, ['tool-a'], ['hazard-b']);
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      // run
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      // resolve
+      await vi.advanceTimersByTimeAsync(15_000);
+    }
+
+    insertMatchRow(matchId, seed, 'completed');
+    return { matchId, managers, human };
+  }
+
+  // -----------------------------------------------------------------------
+  // Scenario 1: Dramatic Comeback
+  // -----------------------------------------------------------------------
+
+  describe('Scenario 1: Dramatic Comeback', () => {
+    it('match completes with all managers having scores', async () => {
+      const { matchId, managers } = await driveMatch(
+        'demo-comeback-seed-001',
+        (round) => round * 5, // Conservative early, grows later
+      );
+
+      const final = getActiveMatch(matchId)!;
+      expect(final.status).toBe('completed');
+      expect(final.phase).toBe('final_standings');
+
+      // All managers scored
+      for (const m of managers) {
+        expect(final.scores[m.id]).toBeGreaterThan(0);
+        expect(final.roundScores[m.id]).toHaveLength(5);
+      }
+
+      // Scores increase per round (mock scoring is round-dependent)
+      for (const m of managers) {
+        const rs = final.roundScores[m.id]!;
+        for (let i = 1; i < rs.length; i++) {
+          expect(rs[i]!).toBeGreaterThan(rs[i - 1]!);
+        }
+      }
+    });
+
+    it('event log captures all transitions', async () => {
+      const { matchId } = await driveMatch('demo-comeback-events-001', (round) => round * 5);
+
+      const events = getMatchEvents(matchId);
+      expect(events.length).toBeGreaterThan(0);
+
+      // Monotonic sequence IDs
+      for (let i = 1; i < events.length; i++) {
+        expect(events[i]!.sequenceId).toBeGreaterThan(events[i - 1]!.sequenceId);
+      }
+
+      // Contains final_standings and match_complete
+      expect(events.some((e) => e.eventType === 'final_standings')).toBe(true);
+      expect(events.some((e) => e.eventType === 'match_complete')).toBe(true);
+    });
+
+    it('replay reconstructs successfully', async () => {
+      const { matchId } = await driveMatch('demo-comeback-replay-001', (round) => round * 5);
+
+      const replay = reconstructReplay({ matchId });
+      expect(replay.ok).toBe(true);
+      if (!replay.ok) return;
+
+      expect(replay.data.finalStandings).toHaveLength(4);
+      expect(replay.data.events.length).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario 2: Mistral Showcase
+  // -----------------------------------------------------------------------
+
+  describe('Scenario 2: Mistral Showcase', () => {
+    it('Mistral bot config exists and is aggressive', () => {
+      const mistralBot = DEFAULT_BOT_CONFIGS.find((b) => b.name === 'mistral-agent');
+      expect(mistralBot).toBeDefined();
+      expect(mistralBot!.personality).toBe('aggressive');
+      expect(mistralBot!.modelProvider).toBe('mistral-codestral');
+      expect(mistralBot!.visualTag).toBe('Mistral AI');
+    });
+
+    it('match completes with Mistral bot participating', async () => {
+      const { matchId, managers } = await driveMatch(
+        'demo-mistral-seed-001',
+        (round) => round * 20, // Aggressive human too
+      );
+
+      const final = getActiveMatch(matchId)!;
+      expect(final.status).toBe('completed');
+
+      // All bots have scores (including the one configured as Mistral)
+      for (const m of managers) {
+        expect(final.scores[m.id]).toBeGreaterThan(0);
+      }
+    });
+
+    it('round balance is valid for the demo seed', () => {
+      const assignments = getRoundAssignments('demo-mistral-seed-001');
+      expect(assignments).toHaveLength(5);
+
+      const errors = validateRoundBalance(assignments);
+      expect(errors).toEqual([]);
+
+      // Difficulty increases
+      for (let i = 1; i < assignments.length; i++) {
+        expect(assignments[i]!.challenge.difficulty).toBeGreaterThanOrEqual(
+          assignments[i - 1]!.challenge.difficulty,
+        );
+      }
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Scenario 3: Close Finish
+  // -----------------------------------------------------------------------
+
+  describe('Scenario 3: Close Finish', () => {
+    it('match completes and all managers have similar scores', async () => {
+      const { matchId, managers } = await driveMatch(
+        'demo-close-finish-seed-001',
+        (round) => 30 + round, // Moderate, consistent bids
+      );
+
+      const final = getActiveMatch(matchId)!;
+      expect(final.status).toBe('completed');
+
+      // All scores populated
+      const scores = managers.map((m) => final.scores[m.id]!);
+      expect(scores.every((s) => s > 0)).toBe(true);
+
+      // Score spread: highest / lowest ratio < 1.2 (within 20%)
+      const maxScore = Math.max(...scores);
+      const minScore = Math.min(...scores);
+      expect(maxScore / minScore).toBeLessThan(1.2);
+    });
+
+    it('replay is self-contained', async () => {
+      const { matchId } = await driveMatch('demo-close-finish-replay-001', (round) => 30 + round);
+
+      const replay = reconstructReplay({ matchId });
+      expect(replay.ok).toBe(true);
+      if (!replay.ok) return;
+
+      // Replay has all data needed for reconstruction
+      expect(replay.data.matchId).toBe(matchId);
+      expect(replay.data.seed).toBe('demo-close-finish-replay-001');
+      expect(replay.data.events.length).toBeGreaterThan(0);
+      expect(replay.data.finalStandings).toHaveLength(4);
+      expect(replay.data.totalEvents).toBe(replay.data.events.length);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Cross-cutting: Multilingual commentary smoke test
+  // -----------------------------------------------------------------------
+
+  describe('Demo: Multilingual commentary', () => {
+    it('generates commentary in all supported languages without provider', async () => {
+      const event = {
+        type: 'phase_transition',
+        round: 1,
+        toPhase: 'briefing',
+      };
+
+      for (const lang of SUPPORTED_LANGUAGES) {
+        const text = await generateMultilingualCommentary(event, lang as CommentaryLanguage);
+        // Without a provider, non-English falls back to English template
+        expect(typeof text).toBe('string');
+        expect(text.length).toBeGreaterThan(0);
+      }
+    });
+  });
+});

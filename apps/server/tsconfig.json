@@ -21,6 +21,12 @@
     },
     {
       "path": "../../packages/audio"
+    },
+    {
+      "path": "../../packages/ai"
+    },
+    {
+      "path": "../../packages/content"
     }
   ]
 }

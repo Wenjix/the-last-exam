@@ -1,4 +1,5 @@
-import { ErrorCategory, ErrorCode, getErrorCategory } from './error-codes.js';
+import type { ErrorCategory, ErrorCode } from './error-codes.js';
+import { getErrorCategory } from './error-codes.js';
 
 /**
  * Game context attached to structured errors for debugging.

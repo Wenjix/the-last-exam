@@ -36,7 +36,11 @@ export interface LogEntry {
  * Designed to be replaced with a more sophisticated logger later if needed.
  */
 export function createLogger(defaultContext?: TleErrorContext) {
-  function log(level: LogLevel, message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) {
+  function log(
+    level: LogLevel,
+    message: string,
+    extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+  ) {
     const entry: LogEntry = {
       level,
       message,
@@ -66,18 +70,27 @@ export function createLogger(defaultContext?: TleErrorContext) {
   }
 
   return {
-    debug: (message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) =>
-      log(LogLevel.DEBUG, message, extra),
-    info: (message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) =>
-      log(LogLevel.INFO, message, extra),
-    warn: (message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) =>
-      log(LogLevel.WARN, message, extra),
-    error: (message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) =>
-      log(LogLevel.ERROR, message, extra),
-    fatal: (message: string, extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error }) =>
-      log(LogLevel.FATAL, message, extra),
-    child: (childContext: TleErrorContext) =>
-      createLogger({ ...defaultContext, ...childContext }),
+    debug: (
+      message: string,
+      extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+    ) => log(LogLevel.DEBUG, message, extra),
+    info: (
+      message: string,
+      extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+    ) => log(LogLevel.INFO, message, extra),
+    warn: (
+      message: string,
+      extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+    ) => log(LogLevel.WARN, message, extra),
+    error: (
+      message: string,
+      extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+    ) => log(LogLevel.ERROR, message, extra),
+    fatal: (
+      message: string,
+      extra?: { code?: ErrorCode; context?: TleErrorContext; error?: Error },
+    ) => log(LogLevel.FATAL, message, extra),
+    child: (childContext: TleErrorContext) => createLogger({ ...defaultContext, ...childContext }),
   };
 }
 

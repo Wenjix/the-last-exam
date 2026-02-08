@@ -12,6 +12,11 @@
   },
   "dependencies": {
     "@tle/contracts": "workspace:*",
+    "seedrandom": "^3.0.5",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/seedrandom": "^3.0.8",
+    "@tle/game-core": "workspace:*"
   }
 }

@@ -100,3 +100,11 @@ export function getDefaultHazards(): Hazard[] {
 export function getDefaultTools(): Tool[] {
   return loadTools(TOOLS_DATA);
 }
+
+export {
+  getRoundAssignments,
+  validateRoundBalance,
+  getHazardIntensity,
+  getToolValueTier,
+} from './round-balance.js';
+export type { RoundAssignment } from './round-balance.js';

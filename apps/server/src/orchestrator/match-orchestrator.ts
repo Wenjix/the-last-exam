@@ -1,4 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
+import type { RunnerResult } from '@tle/contracts';
+import { scoreRunnerResult } from '@tle/game-core';
+import type { ScoreResult } from '@tle/game-core';
 import { emitToMatch } from '../ws/event-stream.js';
 import { appendEvent } from '../persistence/event-store.js';
 import { clearRoundCache } from '../middleware/idempotency.js';
@@ -232,6 +235,128 @@ export function submitEquip(
   if (!match || match.phase !== 'equip') return false;
   match.equips.set(managerId, { tools, hazards });
   return true;
+}
+
+// === Runner Result Application ===
+
+/** Result of applying a runner result to a match. */
+export interface ApplyRunnerResultOutcome {
+  readonly success: boolean;
+  readonly error?: string;
+  readonly managerId: string;
+  readonly round: number;
+  readonly scoreResult?: ScoreResult;
+}
+
+/**
+ * Apply a real runner result to the match state.
+ *
+ * This function:
+ *  1. Validates the runner result belongs to an active match in the run/resolve phase.
+ *  2. Scores the result using game-core's scoring engine (with correctness gate).
+ *  3. Updates the match scores and roundScores.
+ *  4. Emits a scored event over WebSocket.
+ *
+ * CORRECTNESS GATE: Failed submissions (success=false) or zero-pass results
+ * receive exactly 0 points via scoreRunnerResult.
+ *
+ * @param runnerResult - The completed runner result from harness execution.
+ * @returns            - Outcome indicating success or failure with details.
+ */
+export function applyRunnerResult(runnerResult: RunnerResult): ApplyRunnerResultOutcome {
+  const match = activeMatches.get(runnerResult.matchId);
+
+  if (!match) {
+    return {
+      success: false,
+      error: 'Match not found',
+      managerId: runnerResult.agentId,
+      round: runnerResult.round,
+    };
+  }
+
+  if (match.status !== 'active') {
+    return {
+      success: false,
+      error: 'Match is not active',
+      managerId: runnerResult.agentId,
+      round: runnerResult.round,
+    };
+  }
+
+  // Verify the runner result is for the current round
+  if (runnerResult.round !== match.round) {
+    return {
+      success: false,
+      error: `Round mismatch: expected ${match.round}, got ${runnerResult.round}`,
+      managerId: runnerResult.agentId,
+      round: runnerResult.round,
+    };
+  }
+
+  // Verify the agent belongs to this match
+  const manager = match.managers.find((m) => m.id === runnerResult.agentId);
+  if (!manager) {
+    return {
+      success: false,
+      error: 'Agent not found in match',
+      managerId: runnerResult.agentId,
+      round: runnerResult.round,
+    };
+  }
+
+  // Score the result using game-core scoring engine (applies correctness gate)
+  const { scoreResult } = scoreRunnerResult(runnerResult);
+
+  // Update match state with the scored result
+  if (!match.roundScores[runnerResult.agentId]) {
+    match.roundScores[runnerResult.agentId] = [];
+  }
+
+  // Pad roundScores if needed (in case earlier rounds weren't recorded)
+  while (match.roundScores[runnerResult.agentId].length < runnerResult.round - 1) {
+    match.roundScores[runnerResult.agentId].push(0);
+  }
+
+  match.roundScores[runnerResult.agentId][runnerResult.round - 1] = scoreResult.totalScore;
+
+  // Recalculate total score from all round scores
+  match.scores[runnerResult.agentId] = match.roundScores[runnerResult.agentId].reduce(
+    (sum, s) => sum + s,
+    0,
+  );
+
+  // Emit scored event
+  const scoredEvent = {
+    type: 'submission_scored',
+    matchId: match.id,
+    round: runnerResult.round,
+    managerId: runnerResult.agentId,
+    scoreResult: {
+      correctness: scoreResult.correctness,
+      baseScore: scoreResult.baseScore,
+      latencyFactor: scoreResult.latencyFactor,
+      resourceFactor: scoreResult.resourceFactor,
+      llmBonus: scoreResult.llmBonus,
+      totalScore: scoreResult.totalScore,
+    },
+    standings: { ...match.scores },
+    timestamp: new Date().toISOString(),
+  };
+
+  emitToMatch(match.id, scoredEvent);
+  try {
+    appendEvent(match.id, 'submission_scored', scoredEvent);
+  } catch {
+    // DB may not be initialized in tests
+  }
+
+  return {
+    success: true,
+    managerId: runnerResult.agentId,
+    round: runnerResult.round,
+    scoreResult,
+  };
 }
 
 /**

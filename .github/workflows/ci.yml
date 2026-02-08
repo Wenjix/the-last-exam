@@ -26,7 +26,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 make g++
+          pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm tsc --build

@@ -1,7 +1,6 @@
 export { BriefingPhase } from './BriefingPhase';
-export { HiddenBidPhase } from './HiddenBidPhase';
-export { BidResolvePhase } from './BidResolvePhase';
-export { EquipPhase } from './EquipPhase';
+export { BiddingPhase } from './BiddingPhase';
+export { StrategyPhase } from './StrategyPhase';
 export { RunPhase } from './RunPhase';
-export { ResolvePhase } from './ResolvePhase';
+export { ScoringPhase } from './ScoringPhase';
 export { FinalStandingsPhase } from './FinalStandingsPhase';

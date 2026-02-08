@@ -1,0 +1,57 @@
+/* === Battle Log === */
+.battlelog {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+}
+
+.battlelog-title {
+  font-size: 0.75rem;
+  font-weight: 200;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.75rem;
+}
+
+.battlelog-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-inner);
+  border: 1px solid var(--border-glass);
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.battlelog-messages::-webkit-scrollbar {
+  display: none;
+}
+
+.battlelog-msg {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  padding: 4px 8px;
+  border-radius: 4px;
+  animation: fade-in 0.3s ease;
+}
+
+.battlelog-msg.system { color: var(--text-secondary); }
+.battlelog-msg.phase_transition { color: var(--accent-cyan); }
+.battlelog-msg.bid { color: var(--accent-pink); }
+.battlelog-msg.score { color: var(--accent-orange); }
+.battlelog-msg.commentary { color: var(--accent-purple); }
+.battlelog-msg.equip { color: var(--accent-green); }
+.battlelog-msg.run { color: var(--accent-green); }
+.battlelog-msg.error { color: #ef4444; }
+
+.battlelog-msg .msg-time {
+  color: var(--text-muted);
+  margin-right: 8px;
+  font-size: 0.6875rem;
+}

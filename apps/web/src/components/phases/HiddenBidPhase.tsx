@@ -1,3 +1,5 @@
+import { GlassCard } from '../ui/GlassCard';
+
 interface HiddenBidPhaseProps {
   round: number;
   onSubmitBid?: (amount: number) => void;
@@ -5,25 +7,29 @@ interface HiddenBidPhaseProps {
   submitted?: boolean;
 }
 
-export function HiddenBidPhase({ round, onSubmitBid, remainingMs, submitted }: HiddenBidPhaseProps) {
+export function HiddenBidPhase({ round, remainingMs, submitted }: HiddenBidPhaseProps) {
   return (
-    <div style={{ padding: '1rem' }}>
-      <h2>Round {round} - Hidden Bid</h2>
-      {remainingMs !== undefined && <p>Time remaining: {Math.ceil(remainingMs / 1000)}s</p>}
-      {submitted ? (
-        <p>Bid submitted. Waiting for other managers...</p>
-      ) : (
-        <div>
-          <p>Place your bid for tool priority this round.</p>
-          <input type="number" min={0} placeholder="Bid amount" id="bid-input" />
-          <button onClick={() => {
-            const input = document.getElementById('bid-input') as HTMLInputElement;
-            if (input && onSubmitBid) onSubmitBid(parseInt(input.value, 10));
-          }}>
-            Submit Bid
-          </button>
+    <GlassCard>
+      <div style={{ padding: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+          <span className="pill pink">round {round}</span>
+          <span className="pill pink">hidden bid</span>
+          {remainingMs !== undefined && (
+            <span className="pill" style={{ color: 'var(--text-secondary)' }}>
+              {Math.ceil(remainingMs / 1000)}s
+            </span>
+          )}
         </div>
-      )}
-    </div>
+        {submitted ? (
+          <p style={{ color: 'var(--accent-green)', fontSize: '0.8125rem' }}>
+            bid submitted. waiting for other managers...
+          </p>
+        ) : (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>
+            place your bid in your manager card.
+          </p>
+        )}
+      </div>
+    </GlassCard>
   );
 }

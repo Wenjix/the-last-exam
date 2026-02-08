@@ -1,10 +1,28 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { RunnerResult } from '@tle/contracts';
-import { scoreRunnerResult } from '@tle/game-core';
-import type { ScoreResult } from '@tle/game-core';
+import { scoreRunnerResult, resolveAuction } from '@tle/game-core';
+import type { ScoreResult, BidEntry } from '@tle/game-core';
+import { getRoundAssignments } from '@tle/content';
+import type { RoundAssignment } from '@tle/content';
+import { CommentaryGenerator } from '@tle/audio';
+import type { CommentaryEvent } from '@tle/audio';
 import { emitToMatch } from '../ws/event-stream.js';
 import { appendEvent } from '../persistence/event-store.js';
 import { clearRoundCache } from '../middleware/idempotency.js';
+
+// === Commentary Generator (module-level, shared across all matches) ===
+
+const commentaryGen = new CommentaryGenerator();
+commentaryGen.onCommentary((output) => {
+  emitToMatch(output.matchId, {
+    type: 'commentary_update',
+    matchId: output.matchId,
+    text: output.text,
+    round: output.round,
+    language: output.language,
+    timestamp: output.timestamp,
+  });
+});
 
 // === Types (inline to avoid cross-package build issues) ===
 
@@ -42,6 +60,7 @@ interface ActiveMatch {
   managers: ManagerState[];
   scores: Record<string, number>;
   roundScores: Record<string, number[]>;
+  roundAssignments: RoundAssignment[];
   phaseDeadline: Date | null;
   phaseTimer: ReturnType<typeof setTimeout> | null;
   bids: Map<string, number>;
@@ -68,6 +87,7 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
     managers,
     scores: {},
     roundScores: {},
+    roundAssignments: getRoundAssignments(matchSeed),
     phaseDeadline: null,
     phaseTimer: null,
     bids: new Map(),
@@ -96,9 +116,23 @@ export function getActiveMatch(matchId: string): ActiveMatch | undefined {
 }
 
 /**
+ * Compute current ranks from scores (1-based, lower = better).
+ */
+function computeRanks(match: ActiveMatch): Record<string, number> {
+  const sorted = [...match.managers].sort(
+    (a, b) => (match.scores[b.id] ?? 0) - (match.scores[a.id] ?? 0),
+  );
+  const ranks: Record<string, number> = {};
+  sorted.forEach((m, i) => {
+    ranks[m.id] = i + 1;
+  });
+  return ranks;
+}
+
+/**
  * Start a phase: set deadline, emit event, schedule auto-advance.
  */
-function startPhase(match: ActiveMatch): void {
+function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
   const duration = PHASE_DURATIONS_MS[match.phase] || 0;
   const now = new Date();
 
@@ -110,18 +144,62 @@ function startPhase(match: ActiveMatch): void {
     match.phaseDeadline = null;
   }
 
-  // Emit phase transition event
-  const event = {
+  // Build phase transition event
+  const assignment = match.roundAssignments[match.round - 1];
+  const event: Record<string, unknown> = {
     type: 'phase_transition',
     matchId: match.id,
     round: match.round,
-    fromPhase: match.phase, // Will be current on first call
+    fromPhase: fromPhase ?? match.phase,
     toPhase: match.phase,
     deadline: match.phaseDeadline?.toISOString() || null,
     timestamp: now.toISOString(),
   };
 
+  // Briefing: include challenge + hazard preview
+  if (match.phase === 'briefing' && assignment) {
+    event.challengeTitle = assignment.challenge.title;
+    event.challengeDescription = assignment.challenge.description;
+    event.difficulty = assignment.challenge.difficulty;
+    event.hazardName = assignment.hazard.name;
+    event.hazardDescription = assignment.hazard.description;
+  }
+
+  // Bid resolve: include auction results
+  if (match.phase === 'bid_resolve' && match.bids.size > 0) {
+    const ranks = computeRanks(match);
+    const bidEntries: BidEntry[] = [...match.bids.entries()].map(([managerId, amount]) => ({
+      managerId,
+      amount,
+      currentRank: ranks[managerId] ?? match.managers.length,
+    }));
+    const auctionResults = resolveAuction(bidEntries, `${match.seed}:r${match.round}`);
+    event.auctionResults = auctionResults.map((r) => ({
+      managerId: r.managerId,
+      managerName: match.managers.find((m) => m.id === r.managerId)?.name ?? 'Unknown',
+      amount: r.amount,
+      pickOrder: r.pickOrder,
+    }));
+  }
+
+  // Equip: include available tools and round hazard
+  if (match.phase === 'equip' && assignment) {
+    event.availableTools = assignment.availableTools.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+    }));
+    event.roundHazard = {
+      id: assignment.hazard.id,
+      name: assignment.hazard.name,
+      description: assignment.hazard.description,
+    };
+  }
+
   emitToMatch(match.id, event);
+
+  // Feed commentary generator
+  commentaryGen.processEvent(event as CommentaryEvent);
 
   try {
     appendEvent(match.id, 'phase_transition', event);
@@ -191,25 +269,8 @@ function advancePhase(match: ActiveMatch): void {
     match.phase = PHASES[phaseIndex + 1];
   }
 
-  // Emit transition
-  const transitionEvent = {
-    type: 'phase_transition',
-    matchId: match.id,
-    round: match.round,
-    fromPhase,
-    toPhase: match.phase,
-    deadline: null as string | null,
-    timestamp: new Date().toISOString(),
-  };
-
-  emitToMatch(match.id, transitionEvent);
-  try {
-    appendEvent(match.id, 'phase_transition', transitionEvent);
-  } catch {
-    // DB may not be initialized
-  }
-
-  startPhase(match);
+  // Delegate to startPhase (single source of truth for phase_transition events)
+  startPhase(match, fromPhase);
 }
 
 /**
@@ -219,6 +280,16 @@ export function submitBid(matchId: string, managerId: string, amount: number): b
   const match = activeMatches.get(matchId);
   if (!match || match.phase !== 'hidden_bid') return false;
   match.bids.set(managerId, amount);
+
+  // Emit bid event (no amount — hidden bid)
+  emitToMatch(matchId, {
+    type: 'bid_submitted',
+    matchId,
+    managerId,
+    round: match.round,
+    timestamp: new Date().toISOString(),
+  });
+
   return true;
 }
 
@@ -234,6 +305,17 @@ export function submitEquip(
   const match = activeMatches.get(matchId);
   if (!match || match.phase !== 'equip') return false;
   match.equips.set(managerId, { tools, hazards });
+
+  // Emit equip event
+  emitToMatch(matchId, {
+    type: 'equip_submitted',
+    matchId,
+    managerId,
+    round: match.round,
+    toolIds: tools,
+    timestamp: new Date().toISOString(),
+  });
+
   return true;
 }
 
@@ -377,9 +459,12 @@ function autoSubmitBotActions(match: ActiveMatch): void {
   }
 
   if (match.phase === 'equip') {
+    const assignment = match.roundAssignments[match.round - 1];
     for (const bot of bots) {
       if (!match.equips.has(bot.id)) {
-        match.equips.set(bot.id, { tools: [], hazards: [] });
+        // Bots pick up to 1 tool from the round pool
+        const toolIds = assignment?.availableTools.slice(0, 1).map((t) => t.id) ?? [];
+        match.equips.set(bot.id, { tools: toolIds, hazards: [] });
       }
     }
   }
@@ -416,6 +501,10 @@ function generateMockRunResults(match: ActiveMatch): void {
   };
 
   emitToMatch(match.id, roundResultEvent);
+
+  // Feed commentary generator
+  commentaryGen.processEvent(roundResultEvent as unknown as CommentaryEvent);
+
   try {
     appendEvent(match.id, 'round_result', roundResultEvent);
   } catch {
@@ -453,6 +542,9 @@ function emitFinalStandings(match: ActiveMatch): void {
 
   emitToMatch(match.id, standingsEvent);
   emitToMatch(match.id, completeEvent);
+
+  // Feed commentary generator
+  commentaryGen.processEvent(standingsEvent as unknown as CommentaryEvent);
 
   try {
     appendEvent(match.id, 'final_standings', standingsEvent);

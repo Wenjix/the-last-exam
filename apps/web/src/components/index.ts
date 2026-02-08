@@ -7,3 +7,6 @@ export { EquipForm } from './EquipForm';
 export { AudioPlayer } from './AudioPlayer';
 export { ReplayViewer } from './ReplayViewer';
 export { LanguageSelector } from './LanguageSelector';
+export { BattleLog } from './BattleLog';
+export type { BattleLogEntry } from './BattleLog';
+export { ManagerCard } from './ManagerCard';

@@ -30,6 +30,13 @@ coverage/
 # Turbo
 .turbo/
 
+# AI/IDE Tools (keep .beads tracked)
+.agent/
+.claude/
+.codex/
+.cursor/
+.serena/
+
 # Logs
 *.log
 npm-debug.log*

@@ -1,0 +1,89 @@
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { GlassCard } from '../components/ui/GlassCard';
+import { DecryptedText } from '../components/ui/DecryptedText';
+import { IridescenceBackground } from '../components/ui/IridescenceBackground';
+import { LoadingDots } from '../components/ui/LoadingDots';
+import './LobbyPage.css';
+
+export function LobbyPage() {
+  const navigate = useNavigate();
+  const [playerName, setPlayerName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleStart = useCallback(async () => {
+    const name = playerName.trim() || 'player';
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/matches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          managers: [
+            { name, role: 'human' },
+            { name: 'bot-alpha', role: 'bot' },
+            { name: 'bot-beta', role: 'bot' },
+            { name: 'bot-gamma', role: 'bot' },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as { error?: { message?: string } }).error?.message || `server error: ${response.status}`);
+      }
+
+      const match = await response.json() as { id: string };
+      navigate(`/match/${match.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to create match');
+    } finally {
+      setLoading(false);
+    }
+  }, [playerName, navigate]);
+
+  return (
+    <div className="lobby-page">
+      <IridescenceBackground />
+      <div className="lobby-content">
+        <GlassCard>
+          <div className="lobby-inner">
+            <div className="lobby-title">
+              <DecryptedText text="the last exam" speed={60} />
+            </div>
+            <p className="lobby-subtitle">
+              ai coding competition — manage your agent, bid for tools, sabotage rivals
+            </p>
+
+            <div className="lobby-form">
+              <input
+                type="text"
+                placeholder="your name"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="glass-input"
+                style={{ textAlign: 'center' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleStart();
+                }}
+                disabled={loading}
+              />
+              <button
+                onClick={handleStart}
+                disabled={loading}
+                className="glass-button primary"
+              >
+                {loading ? <LoadingDots /> : 'start match'}
+              </button>
+            </div>
+
+            {error && <p className="lobby-error">{error}</p>}
+          </div>
+        </GlassCard>
+      </div>
+    </div>
+  );
+}

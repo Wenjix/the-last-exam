@@ -1,0 +1,190 @@
+/* === Glass Card System === */
+.glass-card {
+  position: relative;
+  background: var(--card-bg);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-glass);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+/* Gradient border glow */
+.glass-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    var(--accent-pink-glow) 0%,
+    transparent 50%,
+    var(--accent-pink-glow) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.glass-card:hover::after {
+  opacity: 1;
+}
+
+.glass-card.expanded {
+  background: var(--card-bg-expanded);
+}
+
+.glass-card.expanded::after {
+  opacity: 1;
+  background: linear-gradient(
+    135deg,
+    var(--accent-pink-glow-hover) 0%,
+    transparent 50%,
+    var(--accent-pink-glow-hover) 100%
+  );
+}
+
+/* Specular highlight layer */
+.glass-card .specular {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.06) 0%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.glass-card .glass-content {
+  position: relative;
+  z-index: 2;
+}
+
+/* === Glass Input === */
+.glass-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-inner);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  text-transform: lowercase;
+  outline: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.glass-input::placeholder {
+  color: var(--text-muted);
+}
+
+.glass-input:focus {
+  border-color: var(--accent-pink-glow);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* === Glass Button === */
+.glass-button {
+  padding: 0.625rem 1.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-inner);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.glass-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.glass-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.glass-button.primary {
+  background: var(--accent-pink-glow);
+  border-color: var(--accent-pink);
+  color: white;
+}
+
+.glass-button.primary:hover:not(:disabled) {
+  background: var(--accent-pink-glow-hover);
+}
+
+/* === Glass Select === */
+.glass-select {
+  padding: 0.375rem 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-inner);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  text-transform: lowercase;
+  outline: none;
+  cursor: pointer;
+}
+
+.glass-select option {
+  background: #1b1b1b;
+  color: var(--text-primary);
+}
+
+/* === Glass Table === */
+.glass-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.glass-table th,
+.glass-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.glass-table th {
+  color: var(--text-muted);
+  font-weight: 200;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.glass-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* === Pill Badge === */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pill.pink { color: var(--accent-pink); border-color: var(--accent-pink-glow); }
+.pill.cyan { color: var(--accent-cyan); border-color: rgba(125, 211, 252, 0.3); }
+.pill.green { color: var(--accent-green); border-color: rgba(134, 239, 172, 0.3); }
+.pill.orange { color: var(--accent-orange); border-color: rgba(253, 186, 116, 0.3); }
+.pill.purple { color: var(--accent-purple); border-color: rgba(196, 181, 253, 0.3); }

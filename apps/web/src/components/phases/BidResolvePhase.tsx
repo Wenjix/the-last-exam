@@ -1,3 +1,5 @@
+import { GlassCard } from '../ui/GlassCard';
+
 interface BidResult {
   managerId: string;
   managerName: string;
@@ -12,30 +14,35 @@ interface BidResolvePhaseProps {
 
 export function BidResolvePhase({ round, results }: BidResolvePhaseProps) {
   return (
-    <div style={{ padding: '1rem' }}>
-      <h2>Round {round} - Bid Results</h2>
-      {results ? (
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={{ border: '1px solid #ccc', padding: '0.5rem' }}>Pick Order</th>
-              <th style={{ border: '1px solid #ccc', padding: '0.5rem' }}>Manager</th>
-              <th style={{ border: '1px solid #ccc', padding: '0.5rem' }}>Bid</th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.sort((a, b) => a.pickOrder - b.pickOrder).map((r) => (
-              <tr key={r.managerId}>
-                <td style={{ border: '1px solid #ccc', padding: '0.5rem' }}>{r.pickOrder}</td>
-                <td style={{ border: '1px solid #ccc', padding: '0.5rem' }}>{r.managerName}</td>
-                <td style={{ border: '1px solid #ccc', padding: '0.5rem' }}>{r.amount}</td>
+    <GlassCard>
+      <div style={{ padding: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+          <span className="pill pink">round {round}</span>
+          <span className="pill pink">bid results</span>
+        </div>
+        {results ? (
+          <table className="glass-table">
+            <thead>
+              <tr>
+                <th>pick</th>
+                <th>manager</th>
+                <th>bid</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p>Revealing bids...</p>
-      )}
-    </div>
+            </thead>
+            <tbody>
+              {[...results].sort((a, b) => a.pickOrder - b.pickOrder).map((r) => (
+                <tr key={r.managerId}>
+                  <td>#{r.pickOrder}</td>
+                  <td>{r.managerName}</td>
+                  <td style={{ color: 'var(--accent-pink)' }}>{r.amount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>revealing bids...</p>
+        )}
+      </div>
+    </GlassCard>
   );
 }

@@ -1,0 +1,31 @@
+.match-page-loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-match);
+}
+
+.match-page-loading .loading-inner {
+  position: relative;
+  z-index: 5;
+  text-align: center;
+}
+
+/* Phase transition animation */
+.phase-panel {
+  animation: fade-in 0.3s ease;
+}
+
+/* Commentary text in match */
+.commentary-text {
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-inner);
+  border: 1px solid var(--border-glass);
+  font-size: 0.8125rem;
+  color: var(--accent-purple);
+  min-height: 2rem;
+  line-height: 1.5;
+}

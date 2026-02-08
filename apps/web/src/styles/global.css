@@ -1,0 +1,83 @@
+/* === Font Import (must be first) === */
+@import '@fontsource/geist-mono/100.css';
+@import '@fontsource/geist-mono/200.css';
+@import '@fontsource/geist-mono/400.css';
+
+/* === Design Tokens === */
+:root {
+  --bg-global: #1b1b1b;
+  --bg-match: #000000;
+  --card-bg: rgba(0, 0, 0, 0.4);
+  --card-bg-expanded: rgba(0, 0, 0, 0.85);
+  --accent-pink: #f0b0d0;
+  --accent-pink-glow: rgba(255, 70, 110, 0.4);
+  --accent-pink-glow-hover: rgba(255, 70, 110, 0.8);
+  --accent-cyan: #7dd3fc;
+  --accent-green: #86efac;
+  --accent-orange: #fdba74;
+  --accent-purple: #c4b5fd;
+  --text-primary: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --radius-card: 12px;
+  --radius-inner: 8px;
+  --blur-card: 16px;
+  --blur-inner: 10px;
+  --font-body: 'Geist Mono', monospace;
+}
+
+/* === Reset === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--bg-global);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  text-transform: lowercase;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* === Scrollbar Hiding === */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* === Keyframes === */
+@keyframes loading-dots {
+  0%, 20% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes typing-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}

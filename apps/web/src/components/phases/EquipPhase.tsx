@@ -1,3 +1,5 @@
+import { GlassCard } from '../ui/GlassCard';
+
 interface EquipPhaseProps {
   round: number;
   availableTools?: string[];
@@ -6,31 +8,29 @@ interface EquipPhaseProps {
   submitted?: boolean;
 }
 
-export function EquipPhase({ round, availableTools, onSubmitEquip, remainingMs, submitted }: EquipPhaseProps) {
+export function EquipPhase({ round, remainingMs, submitted }: EquipPhaseProps) {
   return (
-    <div style={{ padding: '1rem' }}>
-      <h2>Round {round} - Equip</h2>
-      {remainingMs !== undefined && <p>Time remaining: {Math.ceil(remainingMs / 1000)}s</p>}
-      {submitted ? (
-        <p>Equipment selections submitted. Preparing for run...</p>
-      ) : (
-        <div>
-          <p>Select tools and assign hazards for this round.</p>
-          {availableTools && availableTools.length > 0 ? (
-            <div>
-              <h4>Available Tools:</h4>
-              <ul>
-                {availableTools.map((tool) => (
-                  <li key={tool}>{tool}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p>No tools available.</p>
+    <GlassCard>
+      <div style={{ padding: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+          <span className="pill orange">round {round}</span>
+          <span className="pill orange">equip</span>
+          {remainingMs !== undefined && (
+            <span className="pill" style={{ color: 'var(--text-secondary)' }}>
+              {Math.ceil(remainingMs / 1000)}s
+            </span>
           )}
-          <button onClick={() => onSubmitEquip?.([], [])}>Submit Equipment</button>
         </div>
-      )}
-    </div>
+        {submitted ? (
+          <p style={{ color: 'var(--accent-green)', fontSize: '0.8125rem' }}>
+            equipment selections submitted. preparing for run...
+          </p>
+        ) : (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem' }}>
+            select tools and assign hazards in your manager card.
+          </p>
+        )}
+      </div>
+    </GlassCard>
   );
 }

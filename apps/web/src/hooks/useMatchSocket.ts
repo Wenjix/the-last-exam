@@ -11,6 +11,19 @@ export type MatchPhase =
   | 'resolve'
   | 'final_standings';
 
+export interface ToolInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface AuctionResultEntry {
+  managerId: string;
+  managerName: string;
+  amount: number;
+  pickOrder: number;
+}
+
 export interface MatchUiState {
   connected: boolean;
   matchId: string | null;
@@ -19,6 +32,11 @@ export interface MatchUiState {
   deadline: string | null;
   scores: Record<string, number>;
   commentary: string[];
+  challengeTitle: string | null;
+  challengeDescription: string | null;
+  availableTools: ToolInfo[];
+  roundHazard: ToolInfo | null;
+  auctionResults: AuctionResultEntry[] | null;
   finalStandings: Array<{
     managerId: string;
     managerName: string;
@@ -35,7 +53,19 @@ type MatchAction =
   | { type: 'CONNECTED' }
   | { type: 'DISCONNECTED' }
   | { type: 'JOINED_MATCH'; matchId: string }
-  | { type: 'PHASE_TRANSITION'; round: number; toPhase: MatchPhase; deadline: string | null }
+  | {
+      type: 'PHASE_TRANSITION';
+      round: number;
+      toPhase: MatchPhase;
+      deadline: string | null;
+      challengeTitle?: string;
+      challengeDescription?: string;
+      availableTools?: ToolInfo[];
+      roundHazard?: ToolInfo | null;
+      auctionResults?: AuctionResultEntry[] | null;
+      hazardName?: string;
+      hazardDescription?: string;
+    }
   | { type: 'ROUND_RESULT'; standings: Record<string, number> }
   | { type: 'COMMENTARY_UPDATE'; text: string }
   | { type: 'FINAL_STANDINGS'; standings: MatchUiState['finalStandings'] }
@@ -49,6 +79,11 @@ const initialState: MatchUiState = {
   deadline: null,
   scores: {},
   commentary: [],
+  challengeTitle: null,
+  challengeDescription: null,
+  availableTools: [],
+  roundHazard: null,
+  auctionResults: null,
   finalStandings: null,
   lastEvent: null,
 };
@@ -61,8 +96,31 @@ function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
       return { ...state, connected: false };
     case 'JOINED_MATCH':
       return { ...state, matchId: action.matchId };
-    case 'PHASE_TRANSITION':
-      return { ...state, round: action.round, phase: action.toPhase, deadline: action.deadline };
+    case 'PHASE_TRANSITION': {
+      // Build hazard from either roundHazard object or hazardName/hazardDescription fields
+      let hazard = state.roundHazard;
+      if (action.roundHazard) {
+        hazard = action.roundHazard;
+      } else if (action.hazardName) {
+        hazard = {
+          id: '',
+          name: action.hazardName,
+          description: action.hazardDescription ?? '',
+        };
+      }
+
+      return {
+        ...state,
+        round: action.round,
+        phase: action.toPhase,
+        deadline: action.deadline,
+        challengeTitle: action.challengeTitle ?? state.challengeTitle,
+        challengeDescription: action.challengeDescription ?? state.challengeDescription,
+        availableTools: action.availableTools ?? state.availableTools,
+        roundHazard: hazard,
+        auctionResults: action.auctionResults ?? state.auctionResults,
+      };
+    }
     case 'ROUND_RESULT':
       return { ...state, scores: action.standings };
     case 'COMMENTARY_UPDATE':
@@ -119,6 +177,13 @@ export function useMatchSocket(serverUrl?: string) {
                 round: data.round as number,
                 toPhase: data.toPhase as MatchPhase,
                 deadline: (data.deadline as string) || null,
+                challengeTitle: data.challengeTitle as string | undefined,
+                challengeDescription: data.challengeDescription as string | undefined,
+                availableTools: data.availableTools as ToolInfo[] | undefined,
+                roundHazard: data.roundHazard as ToolInfo | undefined,
+                auctionResults: data.auctionResults as AuctionResultEntry[] | undefined,
+                hazardName: data.hazardName as string | undefined,
+                hazardDescription: data.hazardDescription as string | undefined,
               });
               break;
             case 'round_result':

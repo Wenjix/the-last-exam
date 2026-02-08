@@ -1,20 +1,12 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-
-// In-memory match store (will be replaced by SQLite later)
-const matches = new Map<string, MatchRecord>();
-
-interface MatchRecord {
-  id: string;
-  seed: string;
-  status: 'pending' | 'active' | 'completed';
-  currentRound: number;
-  currentPhase: string;
-  managers: Array<{ id: string; name: string; role: 'human' | 'bot' }>;
-  scores: Record<string, number>;
-  phaseDeadline: string | null;
-  createdAt: string;
-}
+import {
+  createMatch,
+  getActiveMatch,
+  getMatchState,
+  submitBid,
+  submitEquip,
+} from '../orchestrator/index.js';
 
 export const matchesRouter = Router();
 
@@ -39,29 +31,16 @@ matchesRouter.post('/matches', (req, res) => {
       return;
     }
 
-    const match: MatchRecord = {
-      id: uuidv4(),
-      seed: seed || uuidv4(),
-      status: 'active',
-      currentRound: 1,
-      currentPhase: 'briefing',
-      managers: managers.map((m: { id?: string; name: string; role: string }) => ({
-        id: m.id || uuidv4(),
-        name: m.name,
-        role: m.role as 'human' | 'bot',
-      })),
-      scores: {},
-      phaseDeadline: null,
-      createdAt: new Date().toISOString(),
-    };
+    const managerStates = managers.map((m: { id?: string; name: string; role: string }) => ({
+      id: m.id || uuidv4(),
+      name: m.name,
+      role: m.role as 'human' | 'bot',
+    }));
 
-    // Initialize scores
-    for (const m of match.managers) {
-      match.scores[m.id] = 0;
-    }
+    // Create match via orchestrator (starts game loop + WS events)
+    const match = createMatch(managerStates, seed);
 
-    matches.set(match.id, match);
-    res.status(201).json(match);
+    res.status(201).json(getMatchState(match.id));
   } catch {
     res.status(500).json({
       error: { code: 'INTERNAL_UNEXPECTED', message: 'Failed to create match' },
@@ -71,32 +50,22 @@ matchesRouter.post('/matches', (req, res) => {
 
 // GET /matches/:id - Get match state
 matchesRouter.get('/matches/:id', (req, res) => {
-  const match = matches.get(req.params.id);
-  if (!match) {
+  const state = getMatchState(req.params.id);
+  if (!state) {
     res.status(404).json({
       error: { code: 'VALIDATION_MATCH_NOT_FOUND', message: 'Match not found' },
     });
     return;
   }
-  res.json(match);
+  res.json(state);
 });
 
 // POST /matches/:id/bids - Submit a bid
 matchesRouter.post('/matches/:id/bids', (req, res) => {
-  const match = matches.get(req.params.id);
+  const match = getActiveMatch(req.params.id);
   if (!match) {
     res.status(404).json({
       error: { code: 'VALIDATION_MATCH_NOT_FOUND', message: 'Match not found' },
-    });
-    return;
-  }
-
-  if (match.currentPhase !== 'hidden_bid') {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_BID_PHASE_CLOSED',
-        message: 'Bids only accepted during hidden_bid phase',
-      },
     });
     return;
   }
@@ -120,25 +89,26 @@ matchesRouter.post('/matches/:id/bids', (req, res) => {
     return;
   }
 
+  const success = submitBid(req.params.id, managerId, amount);
+  if (!success) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_BID_PHASE_CLOSED',
+        message: 'Bids only accepted during hidden_bid phase',
+      },
+    });
+    return;
+  }
+
   res.json({ success: true, message: 'Bid accepted', idempotencyKey });
 });
 
 // POST /matches/:id/equips - Submit equip selections
 matchesRouter.post('/matches/:id/equips', (req, res) => {
-  const match = matches.get(req.params.id);
+  const match = getActiveMatch(req.params.id);
   if (!match) {
     res.status(404).json({
       error: { code: 'VALIDATION_MATCH_NOT_FOUND', message: 'Match not found' },
-    });
-    return;
-  }
-
-  if (match.currentPhase !== 'equip') {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_EQUIP_PHASE_CLOSED',
-        message: 'Equip only accepted during equip phase',
-      },
     });
     return;
   }
@@ -152,6 +122,17 @@ matchesRouter.post('/matches/:id/equips', (req, res) => {
     return;
   }
 
+  const success = submitEquip(req.params.id, managerId, toolSelections || [], hazardAssignments || []);
+  if (!success) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_EQUIP_PHASE_CLOSED',
+        message: 'Equip only accepted during equip phase',
+      },
+    });
+    return;
+  }
+
   res.json({
     success: true,
     equippedTools: toolSelections || [],
@@ -159,6 +140,3 @@ matchesRouter.post('/matches/:id/equips', (req, res) => {
     idempotencyKey,
   });
 });
-
-// Export the store for other modules
-export { matches };

@@ -14,22 +14,24 @@ export function CountdownTimer({ deadline, label }: CountdownTimerProps) {
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
   const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const urgent = remainingSeconds <= 10;
 
   return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.5rem',
-      padding: '0.25rem 0.75rem',
-      borderRadius: '4px',
-      backgroundColor: isExpired ? '#fee' : remainingSeconds <= 10 ? '#fff3e0' : '#f5f5f5',
-      fontFamily: 'monospace',
-      fontSize: '1.25rem',
-      fontWeight: 'bold',
-      color: isExpired ? '#c00' : remainingSeconds <= 10 ? '#e65100' : '#333',
-    }}>
-      {label && <span style={{ fontSize: '0.875rem', fontWeight: 'normal' }}>{label}</span>}
-      <span>{isExpired ? '0:00' : display}</span>
-    </div>
+    <span
+      className={`pill ${isExpired ? 'pink' : urgent ? 'orange' : ''}`}
+      style={{
+        fontFamily: 'var(--font-body)',
+        fontSize: '0.875rem',
+        fontWeight: 400,
+        color: isExpired
+          ? 'var(--accent-pink)'
+          : urgent
+            ? 'var(--accent-orange)'
+            : 'var(--text-primary)',
+      }}
+    >
+      {label && <span style={{ marginRight: '6px', fontWeight: 200 }}>{label}</span>}
+      {isExpired ? '0:00' : display}
+    </span>
   );
 }

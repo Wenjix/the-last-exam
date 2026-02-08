@@ -1,3 +1,6 @@
+import { GlassCard } from '../ui/GlassCard';
+import { LoadingDots } from '../ui/LoadingDots';
+
 interface RunPhaseProps {
   round: number;
   remainingMs?: number;
@@ -6,17 +9,31 @@ interface RunPhaseProps {
 
 export function RunPhase({ round, remainingMs, agentStatuses }: RunPhaseProps) {
   return (
-    <div style={{ padding: '1rem' }}>
-      <h2>Round {round} - Run</h2>
-      {remainingMs !== undefined && <p>Time remaining: {Math.ceil(remainingMs / 1000)}s</p>}
-      <p>Agents are working on the challenge...</p>
-      {agentStatuses && (
-        <ul>
-          {agentStatuses.map((a) => (
-            <li key={a.agentId}>{a.name}: {a.status}</li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <GlassCard>
+      <div style={{ padding: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.75rem' }}>
+          <span className="pill green">round {round}</span>
+          <span className="pill green">running</span>
+          {remainingMs !== undefined && (
+            <span className="pill" style={{ color: 'var(--text-secondary)' }}>
+              {Math.ceil(remainingMs / 1000)}s
+            </span>
+          )}
+          <LoadingDots />
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
+          agents are working on the challenge...
+        </p>
+        {agentStatuses && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {agentStatuses.map((a) => (
+              <div key={a.agentId} style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                <span style={{ color: 'var(--accent-green)' }}>{a.name}</span>: {a.status}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </GlassCard>
   );
 }

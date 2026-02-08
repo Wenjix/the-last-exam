@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { LoadingDots } from './ui/LoadingDots';
 
 interface EquipFormProps {
   matchId: string;
@@ -58,7 +59,7 @@ export function EquipForm({
       await onSubmit([...selectedTools], [...selectedHazards]);
       setSubmitted(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit equipment');
+      setError(err instanceof Error ? err.message : 'failed to submit equipment');
     } finally {
       setLoading(false);
     }
@@ -66,84 +67,77 @@ export function EquipForm({
 
   if (submitted) {
     return (
-      <div style={{ padding: '1rem', backgroundColor: '#e8f5e9', borderRadius: '4px' }}>
-        <p>Equipment submitted for Round {round}.</p>
-        <p style={{ color: '#666', fontSize: '0.875rem' }}>
-          Tools: {selectedTools.size > 0 ? [...selectedTools].join(', ') : 'None'} |
-          Hazards: {selectedHazards.size > 0 ? [...selectedHazards].join(', ') : 'None'}
+      <div style={{ padding: '0.75rem' }}>
+        <p style={{ color: 'var(--accent-green)', fontSize: '0.8125rem' }}>
+          equipment submitted for round {round}
+        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>
+          tools: {selectedTools.size > 0 ? [...selectedTools].join(', ') : 'none'} |
+          hazards: {selectedHazards.size > 0 ? [...selectedHazards].join(', ') : 'none'}
         </p>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <h4>Select Tools (max {maxTools}) - Round {round}</h4>
-      {availableTools.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-          {availableTools.map((tool) => (
-            <button
-              key={tool.id}
-              onClick={() => toggleTool(tool.id)}
-              disabled={disabled || loading}
-              style={{
-                padding: '0.5rem 1rem',
-                border: selectedTools.has(tool.id) ? '2px solid #1976d2' : '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: selectedTools.has(tool.id) ? '#e3f2fd' : 'white',
-                cursor: disabled || loading ? 'not-allowed' : 'pointer',
-              }}
-              title={tool.description}
-            >
-              {tool.name}
-            </button>
-          ))}
+    <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 200, marginBottom: '0.5rem' }}>
+          select tools (max {maxTools}) — round {round}
         </div>
-      ) : (
-        <p style={{ color: '#666' }}>No tools available this round.</p>
-      )}
+        {availableTools.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+            {availableTools.map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => toggleTool(tool.id)}
+                disabled={disabled || loading}
+                className={`glass-button ${selectedTools.has(tool.id) ? 'primary' : ''}`}
+                style={{ fontSize: '0.75rem', padding: '0.375rem 0.75rem' }}
+                title={tool.description}
+              >
+                {tool.name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>no tools available</p>
+        )}
+      </div>
 
-      <h4>Assign Hazards</h4>
-      {availableHazards.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-          {availableHazards.map((hazard) => (
-            <button
-              key={hazard.id}
-              onClick={() => toggleHazard(hazard.id)}
-              disabled={disabled || loading}
-              style={{
-                padding: '0.5rem 1rem',
-                border: selectedHazards.has(hazard.id) ? '2px solid #c00' : '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: selectedHazards.has(hazard.id) ? '#ffebee' : 'white',
-                cursor: disabled || loading ? 'not-allowed' : 'pointer',
-              }}
-              title={hazard.description}
-            >
-              {hazard.name}
-            </button>
-          ))}
+      <div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 200, marginBottom: '0.5rem' }}>
+          assign hazards
         </div>
-      ) : (
-        <p style={{ color: '#666' }}>No hazards this round.</p>
-      )}
+        {availableHazards.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
+            {availableHazards.map((hazard) => (
+              <button
+                key={hazard.id}
+                onClick={() => toggleHazard(hazard.id)}
+                disabled={disabled || loading}
+                className={`glass-button ${selectedHazards.has(hazard.id) ? 'primary' : ''}`}
+                style={{ fontSize: '0.75rem', padding: '0.375rem 0.75rem' }}
+                title={hazard.description}
+              >
+                {hazard.name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>no hazards this round</p>
+        )}
+      </div>
 
-      {error && <p style={{ color: '#c00', fontSize: '0.875rem' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--accent-pink)', fontSize: '0.75rem' }}>{error}</p>}
 
       <button
         onClick={handleSubmit}
         disabled={disabled || loading}
-        style={{
-          padding: '0.5rem 1.5rem',
-          fontSize: '1rem',
-          backgroundColor: loading ? '#ccc' : '#1976d2',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: disabled || loading ? 'not-allowed' : 'pointer',
-        }}
+        className="glass-button primary"
+        style={{ alignSelf: 'flex-start' }}
       >
-        {loading ? 'Submitting...' : 'Submit Equipment'}
+        {loading ? <LoadingDots /> : 'submit equipment'}
       </button>
     </div>
   );

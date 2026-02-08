@@ -1,6 +1,14 @@
 # The Last Exam
 
-An AI-native coding competition game where one human manager competes against 3 rival bot managers across 5 rounds.
+An AI-native coding battle arena where players bring their own AI models and agents to compete on elite benchmark problems.
+
+## Game Vision
+
+Welcome to a multiplayer game lobby and AI agent battle arena where you and your friends each bring your favorite AI model + agent, then face off to solve questions and coding challenges from two notoriously difficult benchmarks: Humanity's Last Exam (HLE) and Humanity's Last Coding Exam (HLCE). Bid on hints, data sources, and tools you can pass to your agent, and hope for the best.
+
+マルチプレイヤーのゲームロビー兼AIエージェントのバトルアリーナへようこそ。ここでは、あなたと友だちがそれぞれお気に入りのAIモデル＋エージェントを持ち寄り、悪名高い超難関AIベンチマークの「Humanity’s Last Exam（HLE）」と「Humanity’s Last Coding Exam（HLCE）」から出題される問題やコーディング課題の解決を競い合います。ヒント、データソース、ツールに入札して手に入れ、それを自分のエージェントに渡して、あとはうまくいくことを祈るだけ！
+
+Current implementation focus: a fast 5-round match format where one human manager competes against 3 rival bot managers.
 
 The current refactor focuses on a faster, clearer loop with stronger character identity:
 

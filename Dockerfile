@@ -21,6 +21,10 @@ COPY packages/testkit/package.json packages/testkit/
 
 RUN pnpm install --frozen-lockfile
 
+# Force recompile native addon from source (prebuild-install may skip it)
+RUN pnpm rebuild better-sqlite3
+RUN ls -la node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3/build/Release/ || echo "WARN: native binding not found after rebuild"
+
 # Copy source and build
 COPY . .
 RUN pnpm build

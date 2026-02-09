@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useRef, useCallback } from 'react';
+import { getWsUrl } from '../lib/api';
 
 // === State Types ===
 
@@ -33,6 +34,7 @@ export interface MatchUiState {
     roundScores: number[];
   }> | null;
   lastEvent: Record<string, unknown> | null;
+  commentaryMode: 'demo' | 'live_ai' | null;
 }
 
 // === Actions ===
@@ -53,6 +55,7 @@ type MatchAction =
       bidWinner?: { managerId: string; managerName: string; amount: number } | null;
       difficulty?: string;
       allBids?: Array<{ managerId: string; managerName: string; amount: number }>;
+      commentaryMode?: 'demo' | 'live_ai';
     }
   | { type: 'ROUND_RESULT'; standings: Record<string, number> }
   | { type: 'COMMENTARY_UPDATE'; text: string }
@@ -76,6 +79,7 @@ const initialState: MatchUiState = {
   allBids: null,
   finalStandings: null,
   lastEvent: null,
+  commentaryMode: null,
 };
 
 function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
@@ -99,6 +103,7 @@ function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
         bidWinner: action.bidWinner !== undefined ? action.bidWinner : state.bidWinner,
         difficulty: action.difficulty ?? state.difficulty,
         allBids: action.allBids ?? state.allBids,
+        commentaryMode: action.commentaryMode ?? state.commentaryMode,
       };
     }
     case 'ROUND_RESULT':
@@ -122,7 +127,7 @@ export function useMatchSocket(serverUrl?: string) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const connect = useCallback(() => {
-    const url = serverUrl || `ws://${window.location.hostname}:3001/ws`;
+    const url = serverUrl || getWsUrl();
 
     try {
       const ws = new WebSocket(url);
@@ -170,6 +175,7 @@ export function useMatchSocket(serverUrl?: string) {
                 allBids: data.allBids as
                   | Array<{ managerId: string; managerName: string; amount: number }>
                   | undefined,
+                commentaryMode: data.commentaryMode as 'demo' | 'live_ai' | undefined,
               });
               break;
             case 'round_result':

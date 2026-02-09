@@ -4,6 +4,7 @@ export type {
   CommentaryOutput,
   CommentaryListener,
   CommentaryGeneratorOptions,
+  LlmProvider,
 } from './commentary-generator.js';
 export {
   briefingCommentary,

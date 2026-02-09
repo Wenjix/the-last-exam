@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getApiBaseUrl } from '../lib/api';
 import { GlassCard } from '../components/ui/GlassCard';
 import { DecryptedText } from '../components/ui/DecryptedText';
 import { IridescenceBackground } from '../components/ui/IridescenceBackground';
@@ -11,6 +12,7 @@ export function LobbyPage() {
   const [playerName, setPlayerName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geminiApiKey, setGeminiApiKey] = useState('');
 
   const handleStart = useCallback(async () => {
     const name = playerName.trim() || 'player';
@@ -18,17 +20,24 @@ export function LobbyPage() {
     setError(null);
 
     try {
-      const response = await fetch('/matches', {
+      const body: Record<string, unknown> = {
+        managers: [
+          { name, role: 'human' },
+          { name: 'Cult of S.A.M.', role: 'bot' },
+          { name: 'iClaudius', role: 'bot' },
+          { name: 'Star3.14', role: 'bot' },
+        ],
+      };
+
+      const trimmedKey = geminiApiKey.trim();
+      if (trimmedKey) {
+        body.geminiApiKey = trimmedKey;
+      }
+
+      const response = await fetch(`${getApiBaseUrl()}/matches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          managers: [
-            { name, role: 'human' },
-            { name: 'Cult of S.A.M.', role: 'bot' },
-            { name: 'iClaudius', role: 'bot' },
-            { name: 'Star3.14', role: 'bot' },
-          ],
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -43,7 +52,7 @@ export function LobbyPage() {
     } finally {
       setLoading(false);
     }
-  }, [playerName, navigate]);
+  }, [playerName, geminiApiKey, navigate]);
 
   return (
     <div className="lobby-page">
@@ -78,6 +87,42 @@ export function LobbyPage() {
               >
                 {loading ? <LoadingDots /> : 'start match'}
               </button>
+            </div>
+
+            <div className="advanced-section">
+              <div className="api-key-row">
+                <label className="advanced-label">mistral api key</label>
+                <input
+                  type="password"
+                  value="provided by sponsor"
+                  className="glass-input"
+                  style={{ textAlign: 'center', fontSize: '0.8125rem' }}
+                  disabled
+                />
+                <p className="advanced-hint">
+                  <span className="sponsor-badge">powered by Mistral AI sponsor credits</span>
+                  <br />
+                  <span className="sponsor-badge">Mistral AI スポンサー提供</span>
+                </p>
+              </div>
+
+              <div className="api-key-row">
+                <label className="advanced-label">gemini api key</label>
+                <input
+                  type="password"
+                  placeholder="AIza..."
+                  value={geminiApiKey}
+                  onChange={(e) => setGeminiApiKey(e.target.value)}
+                  className="glass-input"
+                  style={{ textAlign: 'center', fontSize: '0.8125rem' }}
+                  disabled={loading}
+                />
+                <p className="advanced-hint">
+                  {geminiApiKey.trim()
+                    ? 'live AI commentary + TTS enabled / AIリアルタイム実況+音声読み上げ有効'
+                    : 'no key = template-based commentary (demo mode) / キーなし=テンプレ実況（デモモード）'}
+                </p>
+              </div>
             </div>
 
             {error && <p className="lobby-error">{error}</p>}

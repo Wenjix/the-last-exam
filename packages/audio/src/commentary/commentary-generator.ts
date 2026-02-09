@@ -27,17 +27,31 @@ export interface CommentaryOutput {
 
 export type CommentaryListener = (output: CommentaryOutput) => void;
 
+export interface LlmProvider {
+  generateText: (
+    prompt: string,
+    options: { temperature?: number; maxTokens?: number; timeoutMs?: number },
+  ) => Promise<{ content: string; error?: string }>;
+}
+
 export interface CommentaryGeneratorOptions {
   readonly circuitBreaker?: CircuitBreakerConfig;
+  readonly llmProvider?: LlmProvider;
 }
 
 export class CommentaryGenerator {
   private listeners: CommentaryListener[] = [];
   private language: string = 'en';
   private readonly circuitBreaker: CommentaryCircuitBreaker;
+  private readonly llmProvider?: LlmProvider;
 
   constructor(options: CommentaryGeneratorOptions = {}) {
     this.circuitBreaker = new CommentaryCircuitBreaker(options.circuitBreaker);
+    this.llmProvider = options.llmProvider;
+  }
+
+  get isLiveAI(): boolean {
+    return !!this.llmProvider;
   }
 
   onCommentary(listener: CommentaryListener): void {
@@ -54,8 +68,10 @@ export class CommentaryGenerator {
 
   processEvent(event: CommentaryEvent): void {
     void this.circuitBreaker.execute(async () => {
-      const text = this.generateText(event);
-      if (!text) return;
+      const templateText = this.generateTemplateText(event);
+      if (!templateText) return;
+
+      const text = await this.generateText(event, templateText);
 
       const output: CommentaryOutput = {
         text,
@@ -79,7 +95,42 @@ export class CommentaryGenerator {
     return this.circuitBreaker;
   }
 
-  private generateText(event: CommentaryEvent): string | null {
+  private async generateText(event: CommentaryEvent, templateHint: string): Promise<string> {
+    if (!this.llmProvider) return templateHint;
+
+    try {
+      const prompt = this.buildLlmPrompt(event, templateHint);
+      const result = await this.llmProvider.generateText(prompt, {
+        temperature: 0.8,
+        maxTokens: 150,
+        timeoutMs: 5000,
+      });
+
+      if (result.error || !result.content) {
+        return templateHint; // Fallback to template
+      }
+
+      return result.content.trim();
+    } catch {
+      return templateHint; // Fallback to template on any error
+    }
+  }
+
+  private buildLlmPrompt(event: CommentaryEvent, templateHint: string): string {
+    const round = (event.round as number) || 1;
+    const eventType = event.type;
+
+    return (
+      `You are a dramatic esports commentator for an AI coding competition called "The Last Exam". ` +
+      `Generate a short, exciting commentary line (1-2 sentences max) for this event.\n\n` +
+      `Event: ${eventType}\n` +
+      `Round: ${round}\n` +
+      `Context hint: ${templateHint}\n\n` +
+      `Be dramatic, concise, and exciting. Do not use markdown. Reply with ONLY the commentary text.`
+    );
+  }
+
+  private generateTemplateText(event: CommentaryEvent): string | null {
     const round = (event.round as number) || 1;
 
     switch (event.type) {

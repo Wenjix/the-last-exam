@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { getApiBaseUrl } from '../lib/api';
 import { useMatchSocket } from '../hooks/useMatchSocket';
 import type { MatchPhase } from '../hooks/useMatchSocket';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
@@ -54,7 +55,7 @@ export function MatchPage() {
 
     async function loadMatch() {
       try {
-        const res = await fetch(`/matches/${matchId}`);
+        const res = await fetch(`${getApiBaseUrl()}/matches/${matchId}`);
         if (res.ok) {
           const data = await res.json() as { managers: ManagerInfo[] };
           setManagers(data.managers);
@@ -182,7 +183,7 @@ export function MatchPage() {
     const humanManager = managers.find((m) => m.role === 'human');
     if (!humanManager) return;
 
-    const res = await fetch(`/matches/${matchId}/bids`, {
+    const res = await fetch(`${getApiBaseUrl()}/matches/${matchId}/bids`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -204,7 +205,7 @@ export function MatchPage() {
     const humanManager = managers.find((m) => m.role === 'human');
     if (!humanManager) return;
 
-    const res = await fetch(`/matches/${matchId}/strategy`, {
+    const res = await fetch(`${getApiBaseUrl()}/matches/${matchId}/strategy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -356,6 +357,11 @@ export function MatchPage() {
             languageSelector={<LanguageSelector value={language} onChange={setLanguage} />}
             audioControls={
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {state.commentaryMode && (
+                  <span className={`commentary-mode-badge ${state.commentaryMode === 'live_ai' ? 'live' : 'demo'}`}>
+                    {state.commentaryMode === 'live_ai' ? 'live AI' : 'demo mode'}
+                  </span>
+                )}
                 {state.deadline && <CountdownTimer deadline={state.deadline} />}
                 <AudioPlayer {...audioPlayer} />
               </div>

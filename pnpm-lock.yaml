@@ -72,6 +72,15 @@ importers:
 
   apps/server:
     dependencies:
+      '@tle/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@tle/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
+      '@tle/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@tle/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -87,6 +96,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      seedrandom:
+        specifier: ^3.0.5
+        version: 3.0.5
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
@@ -94,15 +106,6 @@ importers:
         specifier: ^8.19.0
         version: 8.19.0
     devDependencies:
-      '@tle/ai':
-        specifier: workspace:*
-        version: link:../../packages/ai
-      '@tle/audio':
-        specifier: workspace:*
-        version: link:../../packages/audio
-      '@tle/content':
-        specifier: workspace:*
-        version: link:../../packages/content
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
@@ -112,6 +115,9 @@ importers:
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
+      '@types/seedrandom':
+        specifier: ^3.0.8
+        version: 3.0.8
       '@types/uuid':
         specifier: ^11.0.0
         version: 11.0.0

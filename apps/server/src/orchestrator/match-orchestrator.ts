@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import seedrandom from 'seedrandom';
 import type { RunnerResult } from '@tle/contracts';
 import { resolveSealedBid, scoreRunnerResult } from '@tle/game-core';
 import type { ScoreResult, BudgetBidEntry } from '@tle/game-core';
@@ -7,24 +8,58 @@ import type { RoundAssignment } from '@tle/content';
 import { generateBotBudgetBid, generateBotStrategy, DEFAULT_BOT_CONFIGS } from '@tle/ai';
 import type { BotPersonality } from '@tle/ai';
 import { CommentaryGenerator } from '@tle/audio';
-import type { CommentaryEvent } from '@tle/audio';
+import type { CommentaryEvent, LlmProvider } from '@tle/audio';
 import { emitToMatch } from '../ws/event-stream.js';
 import { appendEvent } from '../persistence/event-store.js';
 import { clearRoundCache } from '../middleware/idempotency.js';
 
-// === Commentary Generator (module-level, shared across all matches) ===
+// === Gemini API for LLM commentary ===
 
-const commentaryGen = new CommentaryGenerator();
-commentaryGen.onCommentary((output) => {
-  emitToMatch(output.matchId, {
-    type: 'commentary_update',
-    matchId: output.matchId,
-    text: output.text,
-    round: output.round,
-    language: output.language,
-    timestamp: output.timestamp,
-  });
-});
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
+
+function createGeminiLlmProvider(apiKey: string): LlmProvider {
+  return {
+    async generateText(prompt, options) {
+      const timeoutMs = options.timeoutMs ?? 5000;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const url = `${GEMINI_API_BASE}/models/${GEMINI_TEXT_MODEL}:generateContent?key=${apiKey}`;
+        const body = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: options.temperature ?? 0.8,
+            maxOutputTokens: options.maxTokens ?? 150,
+          },
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          return { content: '', error: `HTTP ${res.status}` };
+        }
+
+        const json = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        return { content: text };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return { content: '', error: message };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
 
 // === Types ===
 
@@ -71,15 +106,31 @@ interface ActiveMatch {
   strategies: Map<string, string>;
   dataCardWinner: string | null;
   createdAt: Date;
+  commentaryGen: CommentaryGenerator;
+  commentaryMode: 'demo' | 'live_ai';
 }
 
 const activeMatches = new Map<string, ActiveMatch>();
 
 // === Orchestrator ===
 
-export function createMatch(managers: ManagerState[], seed?: string): ActiveMatch {
+export function createMatch(managers: ManagerState[], seed?: string, geminiApiKey?: string): ActiveMatch {
   const matchId = uuidv4();
   const matchSeed = seed || uuidv4();
+
+  // Create per-match commentary generator
+  const llmProvider = geminiApiKey ? createGeminiLlmProvider(geminiApiKey) : undefined;
+  const commentaryGen = new CommentaryGenerator({ llmProvider });
+  commentaryGen.onCommentary((output) => {
+    emitToMatch(output.matchId, {
+      type: 'commentary_update',
+      matchId: output.matchId,
+      text: output.text,
+      round: output.round,
+      language: output.language,
+      timestamp: output.timestamp,
+    });
+  });
 
   const match: ActiveMatch = {
     id: matchId,
@@ -99,6 +150,8 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
     strategies: new Map(),
     dataCardWinner: null,
     createdAt: new Date(),
+    commentaryGen,
+    commentaryMode: geminiApiKey ? 'live_ai' : 'demo',
   };
 
   for (const m of managers) {
@@ -211,8 +264,11 @@ function startPhase(match: ActiveMatch, fromPhase?: MatchPhase): void {
     }));
   }
 
+  // Include commentaryMode in phase_transition events
+  event.commentaryMode = match.commentaryMode;
+
   emitToMatch(match.id, event);
-  commentaryGen.processEvent(event as CommentaryEvent);
+  match.commentaryGen.processEvent(event as CommentaryEvent);
 
   try {
     appendEvent(match.id, 'phase_transition', event);
@@ -734,37 +790,116 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
  * Generate mock run results.
  */
 function generateMockRunResults(match: ActiveMatch): void {
+  const rng = seedrandom(`${match.seed}:mock:r${match.round}`);
+  const assignment = match.roundAssignments[match.round - 1];
+  const difficulty = assignment?.challenge?.difficulty ?? match.round;
+
   for (const manager of match.managers) {
     const managerIndex = match.managers.indexOf(manager);
-    let mockScore = 500 + match.round * 50 + managerIndex * 25;
 
-    // Data card winner gets a slight bonus
-    if (manager.id === match.dataCardWinner) {
-      mockScore += 50;
+    // Issue B guard: skip managers already scored for this round (e.g. by real runner)
+    const existingScores = match.roundScores[manager.id];
+    if (existingScores && existingScores.length >= match.round) {
+      continue;
     }
 
+    // Seeded correctness formula
+    const baseSkill = 0.85 - managerIndex * 0.05;
+    const penalty = (difficulty - 1) * 0.06;
+    const dataCardBoost = manager.id === match.dataCardWinner ? 0.10 : 0;
+    const variance = (rng() - 0.5) * 0.1;
+    const correctness = Math.max(0, Math.min(1, baseSkill - penalty + dataCardBoost + variance));
+    const passedTests = Math.round(correctness * 5);
+
+    // Build seeded execution metrics
+    const durationMs = Math.round(800 + rng() * 4000);
+    const memoryUsedBytes = Math.round(30_000_000 + rng() * 90_000_000);
+
+    // Build harness results (5 test cases)
+    const harnessResults = Array.from({ length: 5 }, (_, i) => ({
+      testId: `mock-test-${i + 1}`,
+      passed: i < passedTests,
+      input: `input-${i + 1}`,
+      expectedOutput: `expected-${i + 1}`,
+      actualOutput: i < passedTests ? `expected-${i + 1}` : `wrong-${i + 1}`,
+    }));
+
+    // Construct RunnerResult for real scoring pipeline
+    const runnerResult: RunnerResult = {
+      jobId: '00000000-0000-0000-0000-000000000000',
+      matchId: match.id,
+      agentId: manager.id,
+      round: match.round,
+      success: passedTests > 0,
+      stdout: '',
+      stderr: '',
+      submittedCode: '// mock submission',
+      harnessResults,
+      executionMetadata: {
+        durationMs,
+        memoryUsedBytes,
+        exitCode: 0,
+        timedOut: false,
+      },
+    };
+
+    // Score through real pipeline (applies correctness gate, latency/resource factors)
+    const { scoreResult } = scoreRunnerResult(runnerResult);
+
+    // Store scores
     if (!match.roundScores[manager.id]) {
       match.roundScores[manager.id] = [];
     }
-    match.roundScores[manager.id].push(mockScore);
-    match.scores[manager.id] = (match.scores[manager.id] || 0) + mockScore;
+    while (match.roundScores[manager.id].length < match.round - 1) {
+      match.roundScores[manager.id].push(0);
+    }
+    match.roundScores[manager.id][match.round - 1] = scoreResult.totalScore;
+    match.scores[manager.id] = match.roundScores[manager.id].reduce((sum, s) => sum + s, 0);
+
+    // Emit per-manager scored event (client handles this)
+    const scoredEvent = {
+      type: 'submission_scored',
+      matchId: match.id,
+      round: match.round,
+      managerId: manager.id,
+      scoreResult: {
+        correctness: scoreResult.correctness,
+        baseScore: scoreResult.baseScore,
+        latencyFactor: scoreResult.latencyFactor,
+        resourceFactor: scoreResult.resourceFactor,
+        llmBonus: scoreResult.llmBonus,
+        totalScore: scoreResult.totalScore,
+      },
+      standings: { ...match.scores },
+      timestamp: new Date().toISOString(),
+    };
+    emitToMatch(match.id, scoredEvent);
+    try {
+      appendEvent(match.id, 'submission_scored', scoredEvent);
+    } catch {
+      // DB may not be initialized in tests
+    }
   }
 
+  // Emit summary round_result for commentary generator + backward compatibility
   const roundResultEvent = {
     type: 'round_result',
     matchId: match.id,
     round: match.round,
     results: match.managers.map((m) => ({
       managerId: m.id,
-      score: match.roundScores[m.id]![match.round - 1],
-      correctness: 0.8 + Math.random() * 0.2,
+      score: match.roundScores[m.id]?.[match.round - 1] ?? 0,
+      correctness:
+        (match.roundScores[m.id]?.[match.round - 1] ?? 0) > 0
+          ? (match.roundScores[m.id]![match.round - 1] / 1100)
+          : 0,
     })),
     standings: { ...match.scores },
     timestamp: new Date().toISOString(),
   };
 
   emitToMatch(match.id, roundResultEvent);
-  commentaryGen.processEvent(roundResultEvent as unknown as CommentaryEvent);
+  match.commentaryGen.processEvent(roundResultEvent as unknown as CommentaryEvent);
 
   try {
     appendEvent(match.id, 'round_result', roundResultEvent);
@@ -799,7 +934,7 @@ function emitFinalStandings(match: ActiveMatch): void {
 
   emitToMatch(match.id, standingsEvent);
   emitToMatch(match.id, completeEvent);
-  commentaryGen.processEvent(standingsEvent as unknown as CommentaryEvent);
+  match.commentaryGen.processEvent(standingsEvent as unknown as CommentaryEvent);
 
   try {
     appendEvent(match.id, 'final_standings', standingsEvent);
@@ -822,6 +957,7 @@ export function getMatchState(matchId: string) {
     managers: match.managers,
     scores: match.scores,
     budgets: match.budgets,
+    commentaryMode: match.commentaryMode,
     phaseDeadline: match.phaseDeadline?.toISOString() || null,
     createdAt: match.createdAt.toISOString(),
   };
@@ -844,6 +980,7 @@ export function getCurrentPhaseEvent(matchId: string): Record<string, unknown> |
     toPhase: match.phase,
     deadline: match.phaseDeadline?.toISOString() || null,
     budgets: { ...match.budgets },
+    commentaryMode: match.commentaryMode,
     timestamp: new Date().toISOString(),
   };
 

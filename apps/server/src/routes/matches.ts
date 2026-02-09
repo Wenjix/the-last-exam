@@ -13,7 +13,7 @@ export const matchesRouter = Router();
 // POST /matches - Create a new match
 matchesRouter.post('/matches', (req, res) => {
   try {
-    const { seed, managers } = req.body;
+    const { seed, managers, geminiApiKey } = req.body;
 
     if (!managers || !Array.isArray(managers) || managers.length !== 4) {
       res.status(400).json({
@@ -36,7 +36,7 @@ matchesRouter.post('/matches', (req, res) => {
       role: m.role as 'human' | 'bot',
     }));
 
-    const match = createMatch(managerStates, seed);
+    const match = createMatch(managerStates, seed, geminiApiKey || undefined);
     res.status(201).json(getMatchState(match.id));
   } catch {
     res.status(500).json({

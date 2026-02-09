@@ -10,8 +10,22 @@ import { initDatabase } from './persistence/index.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
+// Parse allowed origins from environment, default to localhost dev servers
+const ALLOWED_ORIGINS = (
+  process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3001,http://localhost:5173'
+).split(',').map((o) => o.trim()).filter(Boolean);
+
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      callback(new Error('Not allowed by CORS'));
+    },
+  }),
+);
 app.use(express.json());
 
 // Routes

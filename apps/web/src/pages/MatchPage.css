@@ -29,3 +29,26 @@
   min-height: 2rem;
   line-height: 1.5;
 }
+
+/* Commentary mode badge */
+.commentary-mode-badge {
+  font-size: 0.625rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.commentary-mode-badge.live {
+  color: var(--accent-green);
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.15);
+}
+
+.commentary-mode-badge.demo {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

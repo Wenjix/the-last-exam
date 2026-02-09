@@ -65,6 +65,7 @@ interface ActiveMatch {
   roundAssignments: RoundAssignment[];
   phaseDeadline: Date | null;
   phaseTimer: ReturnType<typeof setTimeout> | null;
+  streamTimers: ReturnType<typeof setTimeout>[];
   budgets: Record<string, number>;
   bids: Map<string, number>;
   strategies: Map<string, string>;
@@ -92,6 +93,7 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
     roundAssignments: getRoundAssignments(matchSeed),
     phaseDeadline: null,
     phaseTimer: null,
+    streamTimers: [],
     budgets: {},
     bids: new Map(),
     strategies: new Map(),
@@ -112,6 +114,16 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
 
 export function getActiveMatch(matchId: string): ActiveMatch | undefined {
   return activeMatches.get(matchId);
+}
+
+export function destroyMatch(matchId: string): boolean {
+  const match = activeMatches.get(matchId);
+  if (!match) return false;
+  if (match.phaseTimer) clearTimeout(match.phaseTimer);
+  for (const t of match.streamTimers) clearTimeout(t);
+  match.streamTimers = [];
+  activeMatches.delete(matchId);
+  return true;
 }
 
 function computeRanks(match: ActiveMatch): Record<string, number> {
@@ -234,6 +246,12 @@ function advancePhase(match: ActiveMatch): void {
   }
 
   const fromPhase = match.phase;
+
+  // Clean up stream timers when leaving execution phase
+  if (fromPhase === 'execution') {
+    for (const t of match.streamTimers) clearTimeout(t);
+    match.streamTimers = [];
+  }
 
   // Resolve sealed bid when transitioning from bidding to strategy
   if (fromPhase === 'bidding') {
@@ -591,7 +609,10 @@ const MOCK_CODE_SOLUTIONS: string[][] = [
  * Simulates 4 agents writing code at different speeds, then running tests.
  */
 function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void {
-  const timers: ReturnType<typeof setTimeout>[] = [];
+  // Clear any leftover stream timers from a previous execution phase
+  for (const t of match.streamTimers) clearTimeout(t);
+  match.streamTimers = [];
+
   const totalTests = 5;
   let completedAgents = 0;
   let phaseAdvanced = false;
@@ -624,7 +645,7 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
         timestamp: new Date().toISOString(),
       });
     }, startOffset);
-    timers.push(startTimer);
+    match.streamTimers.push(startTimer);
 
     // 2) Emit code chunks line by line
     const codeStartTime = startOffset + 300;
@@ -642,7 +663,7 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
           timestamp: new Date().toISOString(),
         });
       }, codeStartTime + lineIdx * lineDelay);
-      timers.push(chunkTimer);
+      match.streamTimers.push(chunkTimer);
     }
 
     // 3) Emit test results after code is done
@@ -666,7 +687,7 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
           timestamp: new Date().toISOString(),
         });
       }, testsStartTime + testIdx * 300);
-      timers.push(testTimer);
+      match.streamTimers.push(testTimer);
     }
 
     // 4) Emit agent_stream_complete after all tests
@@ -691,10 +712,10 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
       if (completedAgents === match.managers.length) {
         // All agents done — advance after a brief pause
         const advanceTimer = setTimeout(safeOnComplete, 500);
-        timers.push(advanceTimer);
+        match.streamTimers.push(advanceTimer);
       }
     }, completeTime);
-    timers.push(completeTimer);
+    match.streamTimers.push(completeTimer);
   }
 
   // Safety: set a hard deadline in case something goes wrong
@@ -703,7 +724,7 @@ function emitMockAgentStreams(match: ActiveMatch, onComplete: () => void): void 
       safeOnComplete();
     }
   }, PHASE_DURATIONS_MS.execution);
-  timers.push(hardDeadline);
+  match.streamTimers.push(hardDeadline);
 
   // Store timer so phase advance can clear it
   match.phaseTimer = hardDeadline;

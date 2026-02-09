@@ -1,6 +1,9 @@
 import type { WebSocket, WebSocketServer } from 'ws';
 import { getCurrentPhaseEvent } from '../orchestrator/match-orchestrator.js';
 
+/** WebSocket.OPEN = 1; defined as const to avoid runtime dependency on ws value import */
+const WS_OPEN = 1;
+
 /** Track which match each WS client is watching */
 const clientMatchMap = new Map<WebSocket, string>();
 const matchClients = new Map<string, Set<WebSocket>>();
@@ -43,8 +46,7 @@ export function emitToMatch(matchId: string, event: Record<string, unknown>): vo
 
   const payload = JSON.stringify(event);
   for (const ws of clients) {
-    if (ws.readyState === 1) {
-      // WebSocket.OPEN
+    if (ws.readyState === WS_OPEN) {
       ws.send(payload);
     }
   }
@@ -56,7 +58,7 @@ export function emitToMatch(matchId: string, event: Record<string, unknown>): vo
 export function broadcast(wss: WebSocketServer, event: Record<string, unknown>): void {
   const payload = JSON.stringify(event);
   for (const ws of wss.clients) {
-    if (ws.readyState === 1) {
+    if (ws.readyState === WS_OPEN) {
       ws.send(payload);
     }
   }

@@ -23,6 +23,8 @@ export interface MatchUiState {
   challengeDescription: string | null;
   dataCard: { id: string; title: string; description: string } | null;
   bidWinner: { managerId: string; managerName: string; amount: number } | null;
+  difficulty: string | null;
+  allBids: Array<{ managerId: string; managerName: string; amount: number }> | null;
   finalStandings: Array<{
     managerId: string;
     managerName: string;
@@ -49,6 +51,8 @@ type MatchAction =
       dataCard?: { id: string; title: string; description: string } | null;
       budgets?: Record<string, number>;
       bidWinner?: { managerId: string; managerName: string; amount: number } | null;
+      difficulty?: string;
+      allBids?: Array<{ managerId: string; managerName: string; amount: number }>;
     }
   | { type: 'ROUND_RESULT'; standings: Record<string, number> }
   | { type: 'COMMENTARY_UPDATE'; text: string }
@@ -68,6 +72,8 @@ const initialState: MatchUiState = {
   challengeDescription: null,
   dataCard: null,
   bidWinner: null,
+  difficulty: null,
+  allBids: null,
   finalStandings: null,
   lastEvent: null,
 };
@@ -91,6 +97,8 @@ function matchReducer(state: MatchUiState, action: MatchAction): MatchUiState {
         dataCard: action.dataCard !== undefined ? action.dataCard : state.dataCard,
         budgets: action.budgets ?? state.budgets,
         bidWinner: action.bidWinner !== undefined ? action.bidWinner : state.bidWinner,
+        difficulty: action.difficulty ?? state.difficulty,
+        allBids: action.allBids ?? state.allBids,
       };
     }
     case 'ROUND_RESULT':
@@ -158,9 +166,19 @@ export function useMatchSocket(serverUrl?: string) {
                   | { managerId: string; managerName: string; amount: number }
                   | null
                   | undefined,
+                difficulty: data.difficulty as string | undefined,
+                allBids: data.allBids as
+                  | Array<{ managerId: string; managerName: string; amount: number }>
+                  | undefined,
               });
               break;
             case 'round_result':
+              dispatch({
+                type: 'ROUND_RESULT',
+                standings: data.standings as Record<string, number>,
+              });
+              break;
+            case 'submission_scored':
               dispatch({
                 type: 'ROUND_RESULT',
                 standings: data.standings as Record<string, number>,

@@ -131,6 +131,17 @@ export function MatchPage() {
         text = `${agentName}: ${passed}/${total} tests passed`;
         break;
       }
+      case 'submission_scored': {
+        logType = 'score';
+        const scoredName = managers.find((m) => m.id === event.managerId)?.name ?? 'agent';
+        const scoreResult = event.scoreResult as { totalScore: number };
+        text = `${scoredName} scored ${scoreResult.totalScore} pts`;
+        break;
+      }
+      case 'match_complete':
+        logType = 'system';
+        text = 'match complete';
+        break;
       default:
         return; // Skip non-game events
     }

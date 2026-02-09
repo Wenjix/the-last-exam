@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import { App } from './App.js';
 import './styles/global.css';
 import './styles/glass.css';
@@ -13,5 +14,6 @@ ReactDOM.createRoot(root).render(
     <BrowserRouter>
       <App />
     </BrowserRouter>
+    <Analytics />
   </React.StrictMode>,
 );

@@ -6,18 +6,16 @@ An AI-native coding battle arena where players bring their own AI models and age
 
 Welcome to a multiplayer game lobby and AI agent battle arena where you and your friends each bring your favorite AI model + agent, then face off to solve questions and coding challenges from two notoriously difficult benchmarks: Humanity's Last Exam (HLE) and Humanity's Last Coding Exam (HLCE). Bid on hints, data sources, and tools you can pass to your agent, and hope for the best.
 
-マルチプレイヤーのゲームロビー兼AIエージェントのバトルアリーナへようこそ。ここでは、あなたと友だちがそれぞれお気に入りのAIモデル＋エージェントを持ち寄り、悪名高い超難関AIベンチマークの「Humanity’s Last Exam（HLE）」と「Humanity’s Last Coding Exam（HLCE）」から出題される問題やコーディング課題の解決を競い合います。ヒント、データソース、ツールに入札して手に入れ、それを自分のエージェントに渡して、あとはうまくいくことを祈るだけ！
+マルチプレイヤーのゲームロビー兼AIエージェントのバトルアリーナへようこそ。ここでは、あなたと友だちがそれぞれお気に入りのAIモデル＋エージェントを持ち寄り、悪名高い超難関AIベンチマークの「Humanity's Last Exam（HLE）」と「Humanity's Last Coding Exam（HLCE）」から出題される問題やコーディング課題の解決を競い合います。ヒント、データソース、ツールに入札して手に入れ、それを自分のエージェントに渡して、あとはうまくいくことを祈るだけ！
 
-Current implementation focus: a fast 5-round match format where one human manager competes against 3 rival bot managers.
-
-The current refactor focuses on a faster, clearer loop with stronger character identity:
+A fast 5-round match format where one human manager competes against 3 rival bot managers:
 
 - `Archivist` (narrative guide for the player side)
 - Rival champions: `Cult of S.A.M.`, `iClaudius`, `Star3.14`
 - `Proctor Null` (antagonist judge)
 - `Commentator` (live narration)
 
-## Core Game Loop (Refactor)
+## Core Game Loop
 
 Each round is ~55 seconds:
 
@@ -44,8 +42,34 @@ Then `final_standings` ends the match after round 5.
 - **Frontend:** React 19 + Vite
 - **Backend:** Express + WebSocket
 - **Database:** SQLite (`better-sqlite3`)
+- **AI (Agents):** Mistral AI (Codestral + Mistral Large) — powers the 4 arena agents
+- **AI (Commentary):** Google Gemini — live commentary generation + TTS
+- **Hosting:** Vercel (web) + Railway (server)
+- **Analytics:** Vercel Analytics
 - **Testing:** Vitest
 - **Validation:** Zod
+
+## Architecture
+
+```mermaid
+graph LR
+    subgraph Vercel
+        Web[Web — React + Vite]
+    end
+
+    subgraph Railway
+        Server[Server — Express + WS + SQLite]
+        Runner[Runner — Code Execution]
+    end
+
+    Mistral[Mistral API]
+    Gemini[Gemini API]
+
+    Web <-->|REST + WebSocket| Server
+    Server --> Runner
+    Server <-->|Agents| Mistral
+    Server <-->|Commentary + TTS| Gemini
+```
 
 ## Project Structure
 
@@ -58,7 +82,7 @@ the-last-exam/
 ├── packages/
 │   ├── contracts/    # Shared Zod schemas and TypeScript types
 │   ├── game-core/    # FSM, scoring engine, bidding logic, and game rules
-│   ├── content/      # Challenges and data cards (legacy schemas retained during refactor)
+│   ├── content/      # Challenges and data cards
 │   ├── ai/           # Bot policies and LLM providers
 │   ├── audio/        # Commentary generation and TTS
 │   └── testkit/      # Shared test utilities
@@ -130,6 +154,29 @@ pnpm test
 pnpm test:watch
 pnpm test:coverage
 ```
+
+## Deployment
+
+| Service | Platform | Notes |
+|---|---|---|
+| **Web** | Vercel | Static SPA — auto-deploys from `main` |
+| **Server** | Railway | Dockerized Express + WebSocket + SQLite |
+
+Key production env vars:
+
+- `VITE_API_URL` — points the web client at the Railway server URL
+- `ALLOWED_ORIGINS` — CORS whitelist for the Vercel domain
+- `MISTRAL_API_KEY` / `GEMINI_API_KEY` — required for live AI features
+
+## What's Next
+
+- **Multiplayer + BYOA (Bring Your Own Agent)** — real-time lobbies where each player connects their own LLM/agent (OpenAI, Claude, Mistral, local models) via API key or agent endpoint
+- **Multilingual Support** — full i18n for UI, challenges, and commentary (EN/JA/FR/ZH); language-aware TTS voices
+- **Generative UI** — AI-driven dynamic interfaces: real-time code diff visualizations, animated agent "thought process" panels, procedurally generated match recaps
+- **Live Spectator Mode** — watch matches in progress with real-time commentary stream, shareable match URLs
+- **Tournament System** — brackets, ELO ratings, seasonal leaderboards, persistent player profiles
+- **Plugin Marketplace** — community-contributed challenges, data cards, custom scoring rules, agent templates
+- **Replay Theater** — cinematic match replays with AI-generated highlight reels and post-match analysis
 
 ## License
 

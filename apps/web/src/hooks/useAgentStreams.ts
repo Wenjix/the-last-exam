@@ -16,6 +16,8 @@ export interface AgentStreamState {
   lineCount: number;
   testResults: TestResult[];
   totalTests: number;
+  totalLines: number;
+  testsTotal: number;
   testsPassed: number;
   durationMs: number;
 }
@@ -56,6 +58,8 @@ function createInitialAgentState(): AgentStreamState {
     lineCount: 0,
     testResults: [],
     totalTests: 0,
+    totalLines: 0,
+    testsTotal: 0,
     testsPassed: 0,
     durationMs: 0,
   };
@@ -75,6 +79,8 @@ function streamsReducer(state: AgentStreamsMap, action: StreamAction): AgentStre
           lineCount: 0,
           testResults: [],
           totalTests: 0,
+          totalLines: 0,
+          testsTotal: 0,
           testsPassed: 0,
           durationMs: 0,
         },

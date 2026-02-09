@@ -298,7 +298,7 @@ export function MatchPage() {
           />
         );
       case 'scoring':
-        return <ScoringPhase round={state.round} standings={state.scores} />;
+        return <ScoringPhase round={state.round} standings={state.scores} managers={managers} />;
       case 'final_standings':
         return null; // Rendered as overlay
       default:

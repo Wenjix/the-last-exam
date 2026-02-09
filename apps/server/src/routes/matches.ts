@@ -86,6 +86,16 @@ matchesRouter.post('/matches/:id/bids', (req, res) => {
     return;
   }
 
+  if (round !== match.round) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ROUND_MISMATCH',
+        message: `Round mismatch: match is on round ${match.round}`,
+      },
+    });
+    return;
+  }
+
   const success = submitBid(req.params.id, managerId, amount);
   if (!success) {
     res.status(400).json({
@@ -115,6 +125,16 @@ matchesRouter.post('/matches/:id/strategy', (req, res) => {
   if (!managerId || round === undefined || !prompt) {
     res.status(400).json({
       error: { code: 'VALIDATION_SCHEMA', message: 'managerId, round, and prompt required' },
+    });
+    return;
+  }
+
+  if (round !== match.round) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ROUND_MISMATCH',
+        message: `Round mismatch: match is on round ${match.round}`,
+      },
     });
     return;
   }

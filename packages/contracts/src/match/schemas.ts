@@ -70,6 +70,27 @@ export const PhaseTransitionEventSchema = z.object({
   toPhase: MatchPhase,
   deadline: z.string().datetime().nullable(),
   timestamp: z.string().datetime(),
+  // Briefing phase fields
+  challengeTitle: z.string().optional(),
+  challengeDescription: z.string().optional(),
+  difficulty: z.string().optional(),
+  dataCard: z.object({
+    id: z.string(),
+    title: z.string(),
+    description: z.string(),
+  }).optional(),
+  // Bidding + strategy fields
+  budgets: z.record(z.string(), z.number()).optional(),
+  bidWinner: z.object({
+    managerId: z.string().uuid(),
+    managerName: z.string(),
+    amount: z.number(),
+  }).nullable().optional(),
+  allBids: z.array(z.object({
+    managerId: z.string().uuid(),
+    managerName: z.string(),
+    amount: z.number(),
+  })).optional(),
 });
 export type PhaseTransitionEvent = z.infer<typeof PhaseTransitionEventSchema>;
 

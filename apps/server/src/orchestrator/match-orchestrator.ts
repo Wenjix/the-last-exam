@@ -69,6 +69,7 @@ interface ActiveMatch {
   bids: Map<string, number>;
   strategies: Map<string, string>;
   dataCardWinner: string | null;
+  createdAt: Date;
 }
 
 const activeMatches = new Map<string, ActiveMatch>();
@@ -95,6 +96,7 @@ export function createMatch(managers: ManagerState[], seed?: string): ActiveMatc
     bids: new Map(),
     strategies: new Map(),
     dataCardWinner: null,
+    createdAt: new Date(),
   };
 
   for (const m of managers) {
@@ -296,6 +298,7 @@ function resolveBidding(match: ActiveMatch): void {
 export function submitBid(matchId: string, managerId: string, amount: number): boolean {
   const match = activeMatches.get(matchId);
   if (!match || match.phase !== 'bidding') return false;
+  if (!match.managers.find((m) => m.id === managerId)) return false;
 
   // Validate bid is within budget
   const budget = match.budgets[managerId] ?? 0;
@@ -320,6 +323,7 @@ export function submitBid(matchId: string, managerId: string, amount: number): b
 export function submitStrategy(matchId: string, managerId: string, prompt: string): boolean {
   const match = activeMatches.get(matchId);
   if (!match || match.phase !== 'strategy') return false;
+  if (!match.managers.find((m) => m.id === managerId)) return false;
 
   match.strategies.set(managerId, prompt);
 
@@ -798,7 +802,7 @@ export function getMatchState(matchId: string) {
     scores: match.scores,
     budgets: match.budgets,
     phaseDeadline: match.phaseDeadline?.toISOString() || null,
-    createdAt: new Date().toISOString(),
+    createdAt: match.createdAt.toISOString(),
   };
 }
 
@@ -840,6 +844,15 @@ export function getCurrentPhaseEvent(matchId: string): Record<string, unknown> |
       managerName: winner?.name ?? 'Unknown',
       amount: match.bids.get(match.dataCardWinner) ?? 0,
     };
+  }
+
+  // Include revealed bids during strategy phase and beyond
+  if (match.bids.size > 0 && match.phase !== 'briefing' && match.phase !== 'bidding') {
+    event.allBids = [...match.bids.entries()].map(([managerId, amount]) => ({
+      managerId,
+      managerName: match.managers.find((m) => m.id === managerId)?.name ?? 'Unknown',
+      amount,
+    }));
   }
 
   return event;

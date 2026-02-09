@@ -3,11 +3,14 @@ import { GlassCard } from '../ui/GlassCard';
 interface ScoringPhaseProps {
   round: number;
   standings: Record<string, number>;
+  managers: { id: string; name: string }[];
 }
 
-export function ScoringPhase({ round, standings }: ScoringPhaseProps) {
+export function ScoringPhase({ round, standings, managers }: ScoringPhaseProps) {
   const sorted = Object.entries(standings)
     .sort(([, a], [, b]) => b - a);
+
+  const nameMap = new Map(managers.map((m) => [m.id, m.name]));
 
   return (
     <GlassCard>
@@ -22,7 +25,7 @@ export function ScoringPhase({ round, standings }: ScoringPhaseProps) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {sorted.map(([id, score], i) => (
             <div key={id} style={{ fontSize: '0.8125rem', color: i === 0 ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
-              #{i + 1} — {score.toFixed(0)} pts
+              #{i + 1} {nameMap.get(id) ?? id} — {score.toFixed(0)} pts
             </div>
           ))}
         </div>

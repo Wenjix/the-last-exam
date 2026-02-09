@@ -16,15 +16,18 @@ export function BudgetBidForm({
   onSubmit,
   disabled = false,
 }: BudgetBidFormProps) {
-  const [amount, setAmount] = useState(0);
+  const [raw, setRaw] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const parsedAmount = raw === '' ? 0 : parseInt(raw, 10);
+
   const handleSubmit = useCallback(async () => {
     if (disabled || submitted || loading) return;
 
-    if (!Number.isInteger(amount)) {
+    const amount = raw === '' ? 0 : parseInt(raw, 10);
+    if (isNaN(amount) || !Number.isInteger(amount)) {
       setError('bid must be a whole number');
       return;
     }
@@ -48,13 +51,13 @@ export function BudgetBidForm({
     } finally {
       setLoading(false);
     }
-  }, [amount, disabled, submitted, loading, remainingBudget, onSubmit]);
+  }, [raw, disabled, submitted, loading, remainingBudget, onSubmit]);
 
   if (submitted) {
     return (
       <div style={{ padding: '0.75rem' }}>
         <p style={{ color: 'var(--accent-green)', fontSize: '0.8125rem' }}>
-          bid of <strong>{amount}</strong> submitted for round {round}
+          bid of <strong>{parsedAmount}</strong> submitted for round {round}
         </p>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>
           waiting for other champions...
@@ -79,11 +82,13 @@ export function BudgetBidForm({
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <input
           id="bid-amount"
-          type="number"
+          type="text"
+          inputMode="numeric"
           min={0}
           max={remainingBudget}
-          value={amount}
-          onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
+          value={raw}
+          placeholder="0"
+          onChange={(e) => setRaw(e.target.value.replace(/[^0-9]/g, ''))}
           disabled={disabled || loading}
           className="glass-input"
           style={{ width: '120px' }}
